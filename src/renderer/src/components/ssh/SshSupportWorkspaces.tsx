@@ -865,16 +865,16 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[1.12rem] font-semibold text-[#22304a]">
+              <div className="text-[1.12rem] font-semibold text-foreground">
                 {t('workspace.nav.snippets', { defaultValue: 'Snippets' })}
               </div>
-              <div className="mt-1 text-[0.82rem] text-[#8896aa]">
+              <div className="mt-1 text-[0.82rem] text-muted-foreground">
                 {t('workspace.snippets.subtitle', {
                   defaultValue: '保存常用的远端命令片段和运维脚本。'
                 })}
               </div>
             </div>
-            <div className="rounded-full bg-white px-3 py-2 text-[0.76rem] font-medium text-[#7b889b] shadow-[0_10px_24px_rgba(111,133,165,0.08)]">
+            <div className="rounded-full bg-secondary px-3 py-2 text-[0.76rem] font-medium text-secondary-foreground shadow-sm">
               {snippets.length} {t('workspace.snippets.items', { defaultValue: 'snippets' })}
             </div>
           </div>
@@ -911,24 +911,24 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
                       setForm(nextForm)
                     }}
                     className={cn(
-                      'flex w-full items-center gap-4 rounded-[22px] border bg-white/92 px-4 py-4 text-left transition-all',
+                      'flex w-full items-center gap-4 rounded-[22px] border bg-card px-4 py-4 text-left transition-all',
                       active
-                        ? 'border-[#2f8cf3] shadow-[0_18px_40px_rgba(47,140,243,0.16)]'
-                        : 'border-[#d7e0ea] shadow-[0_18px_44px_rgba(98,116,146,0.08)] hover:border-[#bfd4ea]'
+                        ? 'border-primary shadow-[0_18px_40px_rgba(47,140,243,0.16)]'
+                        : 'border-border shadow-[0_18px_44px_rgba(98,116,146,0.08)] hover:border-primary/30'
                     )}
                   >
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-[16px] bg-[#0a5d96] text-white shadow-[0_16px_30px_rgba(10,93,150,0.25)]">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-[16px] bg-primary text-primary-foreground shadow-[0_16px_30px_rgba(10,93,150,0.25)]">
                       <Terminal className="size-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[1rem] font-semibold text-[#202b41]">
+                      <div className="truncate text-[1rem] font-semibold text-foreground">
                         {snippet.name}
                       </div>
-                      <div className="mt-1 truncate text-[0.82rem] text-[#7b8a9f]">
+                      <div className="mt-1 truncate text-[0.82rem] text-muted-foreground">
                         {target?.name || 'SSH'} · {snippet.command}
                       </div>
                     </div>
-                    <CheckCircle2 className="size-4 shrink-0 text-[#1f8c57]" />
+                    <CheckCircle2 className="size-4 shrink-0 text-primary" />
                   </button>
                 )
               })}
@@ -937,21 +937,21 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
         </div>
       </main>
 
-      <aside className="hidden w-[340px] shrink-0 bg-[#f6f8fb] lg:flex lg:flex-col">
-        <div className="flex items-center justify-between border-b border-[#dde5ef] px-4 py-4">
+      <aside className="hidden w-[340px] shrink-0 bg-muted/30 lg:flex lg:flex-col">
+        <div className="flex items-center justify-between border-b border-border px-4 py-4">
           <div>
-            <div className="text-[1.12rem] font-semibold text-[#22304a]">
+            <div className="text-[1.12rem] font-semibold text-foreground">
               {editorMode === 'edit'
                 ? t('workspace.snippets.edit', { defaultValue: '编辑片段' })
                 : t('workspace.snippets.new', { defaultValue: '新增片段' })}
             </div>
-            <div className="mt-1 text-[0.8rem] text-[#8b97ab]">
+            <div className="mt-1 text-[0.8rem] text-muted-foreground">
               {t('workspace.personalVault', { defaultValue: '个人保险库' })}
             </div>
           </div>
           <button
             type="button"
-            className="inline-flex size-8 items-center justify-center rounded-[12px] text-[#4b5b72] hover:bg-[#e8edf4]"
+            className="inline-flex size-8 items-center justify-center rounded-[12px] text-muted-foreground hover:bg-muted"
           >
             <MoreHorizontal className="size-4" />
           </button>
@@ -965,7 +965,7 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, name: event.target.value }))
                 }
-                className="h-11 rounded-[14px] border-[#c9d3df] bg-white"
+                className="h-11 rounded-[14px] border-border bg-background"
               />
             </Field>
             <Field label={t('workspace.snippets.host', { defaultValue: 'Host' })}>
@@ -975,7 +975,7 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
                   setForm((current) => ({ ...current, connectionId: value }))
                 }
               >
-                <SelectTrigger className="h-11 rounded-[14px] border-[#c9d3df] bg-white">
+                <SelectTrigger className="h-11 rounded-[14px] border-border bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -993,7 +993,7 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, command: event.target.value }))
                 }
-                className="min-h-[140px] rounded-[14px] border-[#c9d3df] bg-white font-mono text-[0.82rem]"
+                className="min-h-[140px] rounded-[14px] border-border bg-background font-mono text-[0.82rem]"
                 placeholder="systemctl restart nginx"
               />
             </Field>
@@ -1003,7 +1003,7 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, description: event.target.value }))
                 }
-                className="min-h-[90px] rounded-[14px] border-[#c9d3df] bg-white"
+                className="min-h-[90px] rounded-[14px] border-border bg-background"
               />
             </Field>
           </SectionCard>
@@ -1011,7 +1011,7 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
           <SectionCard title={t('workspace.snippets.actions', { defaultValue: '快捷操作' })}>
             <Button
               variant="outline"
-              className="h-11 w-full rounded-[14px] border-[#d1dbe7] bg-white text-[#52627a] hover:bg-[#f3f7fb]"
+              className="h-11 w-full rounded-[14px] border-border bg-background text-muted-foreground hover:bg-muted"
               onClick={() => {
                 navigator.clipboard.writeText(form.command)
                 toast.success(
@@ -1028,19 +1028,19 @@ export function SshSnippetsWorkspace(): React.JSX.Element {
           </SectionCard>
         </div>
 
-        <div className="border-t border-[#dde5ef] px-4 py-4">
+        <div className="border-t border-border px-4 py-4">
           <div className="flex gap-3">
             {selectedSnippet ? (
               <Button
                 variant="outline"
-                className="h-11 flex-1 rounded-[14px] border-[#d1dbe7] bg-white text-[#52627a] hover:bg-[#f3f7fb]"
+                className="h-11 flex-1 rounded-[14px] border-border bg-background text-muted-foreground hover:bg-muted"
                 onClick={handleDelete}
               >
                 {t('delete')}
               </Button>
             ) : null}
             <Button
-              className="h-11 flex-1 rounded-[14px] bg-[#2f8cf3] text-[0.88rem] font-semibold text-white hover:bg-[#247fe6]"
+              className="h-11 flex-1 rounded-[14px] bg-primary text-[0.88rem] font-semibold text-primary-foreground hover:bg-primary/90"
               onClick={handleSave}
             >
               {t('save')}

@@ -353,6 +353,7 @@ export function SshPage(): React.JSX.Element {
   const { t } = useTranslation('ssh')
   const isMac = /Mac/.test(navigator.userAgent)
 
+  const theme = useSettingsStore((state) => state.theme)
   const sshTerminalThemePreset = useSettingsStore((state) => state.sshTerminalThemePreset)
   const openTabs = useSshStore((state) => state.openTabs)
   const activeTabId = useSshStore((state) => state.activeTabId)
@@ -508,8 +509,8 @@ export function SshPage(): React.JSX.Element {
   const terminalConnected = activeSession?.status === 'connected'
   const shellTone = getShellTone(showTerminalView, terminalConnected)
   const shellPalette = useMemo(
-    () => getSshChromePalette(sshTerminalThemePreset, 'dark'),
-    [sshTerminalThemePreset]
+    () => getSshChromePalette(sshTerminalThemePreset, theme === 'system' ? 'dark' : theme),
+    [sshTerminalThemePreset, theme]
   )
   const stageStatus =
     activeSession?.status === 'connecting' ||

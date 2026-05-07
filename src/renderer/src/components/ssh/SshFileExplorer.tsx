@@ -161,12 +161,12 @@ function getEntryIcon(entry: SshFileEntry): typeof Folder {
 function PaneStatus({ status }: { status?: SftpConnectionState['status'] }): React.JSX.Element {
   const statusClass =
     status === 'connected'
-      ? 'bg-[#eaf7ef] text-[#217a49]'
+      ? 'bg-green-500/12 text-green-600 dark:text-green-400'
       : status === 'connecting'
-        ? 'bg-[#fff3df] text-[#b77618]'
+        ? 'bg-amber-500/12 text-amber-600 dark:text-amber-400'
         : status === 'error'
-          ? 'bg-[#ffeaea] text-[#c54c4c]'
-          : 'bg-[#edf2f7] text-[#607088]'
+          ? 'bg-red-500/12 text-red-600 dark:text-red-400'
+          : 'bg-secondary text-secondary-foreground'
 
   return (
     <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-semibold', statusClass)}>
@@ -338,19 +338,19 @@ function ModernSshFileExplorer({
   return (
     <section
       className={cn(
-        'flex h-full min-w-0 flex-col rounded-[28px] border bg-white/92 shadow-[0_22px_48px_rgba(111,133,165,0.08)]',
-        active ? 'border-[#2f8cf3]' : 'border-[#d8e1eb]'
+        'flex h-full min-w-0 flex-col rounded-[28px] border bg-card shadow-[0_22px_48px_-30px_color-mix(in_srgb,var(--foreground)_18%,transparent)]',
+        active ? 'border-primary' : 'border-border'
       )}
       onMouseDown={onActivatePane}
     >
-      <div className="border-b border-[#dce4ee] px-4 py-4">
+      <div className="border-b border-border px-4 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-[220px] flex-1">
             <Select
               value={connection?.id ?? ''}
               onValueChange={(value) => onSelectConnection(value || null)}
             >
-              <SelectTrigger className="h-11 rounded-[16px] border-[#d3dbe6] bg-white px-4 text-[0.9rem] text-[#24314a] shadow-none">
+              <SelectTrigger className="h-11 rounded-[16px] border-border bg-background px-4 text-[0.9rem] text-foreground shadow-none">
                 <SelectValue
                   placeholder={t('workspace.sftp.chooseHost', {
                     defaultValue: 'Choose remote host'
@@ -371,7 +371,7 @@ function ModernSshFileExplorer({
 
           <Button
             size="sm"
-            className="h-10 rounded-[14px] bg-[#2f8cf3] px-4 text-[0.82rem] font-semibold text-white hover:bg-[#247fe6]"
+            className="h-10 rounded-[14px] bg-primary px-4 text-[0.82rem] font-semibold text-primary-foreground hover:bg-primary/90"
             onClick={onConnect}
             disabled={!connection || connectionState?.status === 'connecting'}
           >
@@ -388,7 +388,7 @@ function ModernSshFileExplorer({
           <Button
             variant="outline"
             size="sm"
-            className="h-10 rounded-[14px] border-[#d0d8e4] bg-white px-4 text-[0.82rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-10 rounded-[14px] border-border bg-background px-4 text-[0.82rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onDisconnect}
             disabled={!connection || connectionState?.status !== 'connected'}
           >
@@ -399,11 +399,11 @@ function ModernSshFileExplorer({
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-[1rem] font-semibold text-[#22304a]">
+            <div className="truncate text-[1rem] font-semibold text-foreground">
               {connection?.name ??
                 t('workspace.sftp.paneTitle', { defaultValue: 'Remote file pane' })}
             </div>
-            <div className="mt-1 truncate text-[0.78rem] text-[#8a98ac]">
+            <div className="mt-1 truncate text-[0.78rem] text-muted-foreground">
               {connection
                 ? `${connection.username}@${connection.host}:${connection.port}`
                 : t('workspace.sftp.paneMeta', {
@@ -415,7 +415,7 @@ function ModernSshFileExplorer({
           <Button
             variant="outline"
             size="sm"
-            className="h-10 rounded-[14px] border-[#d0d8e4] bg-white px-4 text-[0.82rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-10 rounded-[14px] border-border bg-background px-4 text-[0.82rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onOpenTerminal}
             disabled={!connection}
           >
@@ -425,12 +425,12 @@ function ModernSshFileExplorer({
         </div>
       </div>
 
-      <div className="border-b border-[#dce4ee] px-4 py-3">
-        <div className="flex items-center gap-2 rounded-[16px] border border-[#d7e0ea] bg-[#f9fbfd] px-2 py-2 shadow-[0_8px_20px_rgba(111,133,165,0.04)]">
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2 rounded-[16px] border border-border bg-muted/40 px-2 py-2 shadow-[0_8px_20px_-18px_color-mix(in_srgb,var(--foreground)_18%,transparent)]">
           <Button
             variant="ghost"
             size="icon-sm"
-            className="size-8 rounded-[10px] text-[#6f7f96] hover:bg-[#eef3f8]"
+            className="size-8 rounded-[10px] text-muted-foreground hover:bg-accent"
             onClick={onGoUp}
             disabled={
               !connection ||
@@ -442,12 +442,12 @@ function ModernSshFileExplorer({
           </Button>
 
           <div className="min-w-0 flex-1 overflow-x-auto">
-            <div className="flex min-w-max items-center gap-1 text-[11px] text-[#5f7088]">
+            <div className="flex min-w-max items-center gap-1 text-[11px] text-muted-foreground">
               {breadcrumbs.map((segment, index) => (
                 <button
                   key={`${segment.path}-${index}`}
                   type="button"
-                  className="rounded px-1.5 py-0.5 hover:bg-white"
+                  className="rounded px-1.5 py-0.5 hover:bg-background"
                   onClick={() => onNavigate(segment.path)}
                 >
                   {segment.label}
@@ -459,7 +459,7 @@ function ModernSshFileExplorer({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="size-8 rounded-[10px] text-[#6f7f96] hover:bg-[#eef3f8]"
+            className="size-8 rounded-[10px] text-muted-foreground hover:bg-accent"
             onClick={onRefresh}
             disabled={!connection || connectionState?.status !== 'connected'}
           >
@@ -468,12 +468,12 @@ function ModernSshFileExplorer({
         </div>
       </div>
 
-      <div className="border-b border-[#dce4ee] px-4 py-3">
+      <div className="border-b border-border px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-[12px] border-[#d0d8e4] bg-white px-3 text-[0.78rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-9 rounded-[12px] border-border bg-background px-3 text-[0.78rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onUploadFile}
             disabled={!connection || connectionState?.status !== 'connected'}
           >
@@ -483,7 +483,7 @@ function ModernSshFileExplorer({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-[12px] border-[#d0d8e4] bg-white px-3 text-[0.78rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-9 rounded-[12px] border-border bg-background px-3 text-[0.78rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onUploadFolder}
             disabled={!connection || connectionState?.status !== 'connected'}
           >
@@ -493,7 +493,7 @@ function ModernSshFileExplorer({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-[12px] border-[#d0d8e4] bg-white px-3 text-[0.78rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-9 rounded-[12px] border-border bg-background px-3 text-[0.78rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onDownloadSelection}
             disabled={selectedCount === 0}
           >
@@ -503,7 +503,7 @@ function ModernSshFileExplorer({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-[12px] border-[#d0d8e4] bg-white px-3 text-[0.78rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-9 rounded-[12px] border-border bg-background px-3 text-[0.78rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onCreateFile}
             disabled={!connection || connectionState?.status !== 'connected'}
           >
@@ -513,7 +513,7 @@ function ModernSshFileExplorer({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-[12px] border-[#d0d8e4] bg-white px-3 text-[0.78rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+            className="h-9 rounded-[12px] border-border bg-background px-3 text-[0.78rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
             onClick={onCreateFolder}
             disabled={!connection || connectionState?.status !== 'connected'}
           >
@@ -521,14 +521,14 @@ function ModernSshFileExplorer({
             {t('fileExplorer.newFolder')}
           </Button>
 
-          <div className="ml-auto rounded-full bg-[#eef3f8] px-3 py-1.5 text-[11px] font-semibold text-[#607088]">
+          <div className="ml-auto rounded-full bg-secondary px-3 py-1.5 text-[11px] font-semibold text-secondary-foreground">
             {selectedCount} {t('workspace.sftp.selected', { defaultValue: 'selected' })}
           </div>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="grid grid-cols-[40px_minmax(0,1fr)_100px_168px_88px] items-center border-b border-[#e2e8f0] bg-[#f8fbfd] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8592a4]">
+        <div className="grid grid-cols-[40px_minmax(0,1fr)_100px_168px_88px] items-center border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           <div className="flex items-center justify-center">
             <Checkbox
               checked={allSelected}
@@ -551,25 +551,25 @@ function ModernSshFileExplorer({
         <div className="h-full overflow-y-auto">
           {!connection || connectionState?.status !== 'connected' ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="flex size-16 items-center justify-center rounded-[22px] bg-[#e2ebf5] text-[#3d5879]">
+              <div className="flex size-16 items-center justify-center rounded-[22px] bg-secondary text-secondary-foreground">
                 <Folder className="size-7" />
               </div>
-              <div className="mt-5 text-[1rem] font-semibold text-[#22304a]">{emptyState}</div>
+              <div className="mt-5 text-[1rem] font-semibold text-foreground">{emptyState}</div>
             </div>
           ) : error && entries.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="text-[0.95rem] font-semibold text-[#22304a]">
+              <div className="text-[0.95rem] font-semibold text-foreground">
                 {t('fileExplorer.error')}
               </div>
-              <div className="mt-2 max-w-sm text-[0.82rem] text-[#8795aa]">{error}</div>
+              <div className="mt-2 max-w-sm text-[0.82rem] text-muted-foreground">{error}</div>
             </div>
           ) : loading && entries.length === 0 ? (
             <div className="flex h-full items-center justify-center">
-              <Loader2 className="size-5 animate-spin text-[#2f8cf3]" />
+              <Loader2 className="size-5 animate-spin text-primary" />
             </div>
           ) : entries.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="text-[0.95rem] font-semibold text-[#22304a]">
+              <div className="text-[0.95rem] font-semibold text-foreground">
                 {t('fileExplorer.empty')}
               </div>
             </div>
@@ -583,8 +583,8 @@ function ModernSshFileExplorer({
                   <div
                     key={entry.path}
                     className={cn(
-                      'grid grid-cols-[40px_minmax(0,1fr)_100px_168px_88px] items-center px-4 py-2.5 text-[13px] text-[#26334d] transition-colors',
-                      selected ? 'bg-[#edf5ff]' : 'hover:bg-[#f6f9fc]'
+                      'grid grid-cols-[40px_minmax(0,1fr)_100px_168px_88px] items-center px-4 py-2.5 text-[13px] text-foreground transition-colors',
+                      selected ? 'bg-primary/10' : 'hover:bg-muted/40'
                     )}
                     onClick={() => {
                       onActivatePane()
@@ -608,26 +608,26 @@ function ModernSshFileExplorer({
                       <Icon
                         className={cn(
                           'size-4 shrink-0',
-                          entry.type === 'directory' ? 'text-[#c58617]' : 'text-[#607088]'
+                          entry.type === 'directory' ? 'text-amber-500' : 'text-muted-foreground'
                         )}
                       />
                       <div className="min-w-0 truncate font-medium">{entry.name}</div>
                     </div>
-                    <div className="text-[12px] text-[#6b7b91]">
+                    <div className="text-[12px] text-muted-foreground">
                       {entry.type === 'directory'
                         ? t('workspace.sftp.directory', { defaultValue: 'Directory' })
                         : t('workspace.sftp.file', { defaultValue: 'File' })}
                     </div>
-                    <div className="truncate text-[12px] text-[#7d8ba0]">
+                    <div className="truncate text-[12px] text-muted-foreground">
                       {formatModifiedTime(entry.modifyTime)}
                     </div>
                     <div className="flex items-center justify-end gap-1.5">
-                      <span className="text-[12px] text-[#7d8ba0]">
+                      <span className="text-[12px] text-muted-foreground">
                         {entry.type === 'directory' ? '--' : formatBytes(entry.size)}
                       </span>
                       <button
                         type="button"
-                        className="rounded p-1 text-[#8b97ab] hover:bg-white hover:text-[#41526c]"
+                        className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                         onClick={(event) => {
                           event.stopPropagation()
                           onRenameEntry(entry)
@@ -637,7 +637,7 @@ function ModernSshFileExplorer({
                       </button>
                       <button
                         type="button"
-                        className="rounded p-1 text-[#8b97ab] hover:bg-white hover:text-[#c45555]"
+                        className="rounded p-1 text-muted-foreground hover:bg-background hover:text-red-500"
                         onClick={(event) => {
                           event.stopPropagation()
                           onDeleteEntry(entry)
@@ -654,7 +654,7 @@ function ModernSshFileExplorer({
                 <div className="px-4 py-4">
                   <Button
                     variant="outline"
-                    className="h-10 rounded-[14px] border-[#d0d8e4] bg-white px-4 text-[0.82rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+                    className="h-10 rounded-[14px] border-border bg-background px-4 text-[0.82rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
                     onClick={onLoadMore}
                   >
                     {loading ? <Loader2 className="size-4 animate-spin" /> : null}

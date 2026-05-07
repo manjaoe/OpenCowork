@@ -20,7 +20,8 @@ function TerminalThemeCard({
 }): React.JSX.Element {
   const { t } = useTranslation(['ssh', 'settings'])
   const definition = getThemePresetDefinition(preset)
-  const preview = getTerminalTheme(preset, 'dark')
+  const theme = useSettingsStore((state) => state.theme)
+  const preview = getTerminalTheme(preset, theme === 'system' ? 'dark' : theme)
 
   return (
     <button

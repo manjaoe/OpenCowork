@@ -90,9 +90,9 @@ export function SshSftpFilePreview({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-[#e0e7f0] px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         {textBased && (viewerType === 'html' || viewerType === 'markdown') ? (
-          <div className="flex items-center rounded-[12px] border border-[#d2dbe6] bg-white p-0.5">
+          <div className="flex items-center rounded-[12px] border border-border bg-background p-0.5">
             <Button
               variant={viewMode === 'preview' ? 'secondary' : 'ghost'}
               size="sm"
@@ -119,7 +119,7 @@ export function SshSftpFilePreview({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-[12px] border-[#d0d8e4] bg-white px-3 text-[0.74rem] font-semibold text-[#51627a] shadow-none hover:bg-[#f3f7fb]"
+              className="h-8 rounded-[12px] border-border bg-background px-3 text-[0.74rem] font-semibold text-muted-foreground shadow-none hover:bg-accent"
               onClick={() => void reload()}
             >
               <RefreshCw className="size-3.5" />
@@ -129,7 +129,7 @@ export function SshSftpFilePreview({
           {textBased ? (
             <Button
               size="sm"
-              className="h-8 rounded-[12px] bg-[#2f8cf3] px-3 text-[0.74rem] font-semibold text-white hover:bg-[#247fe6]"
+              className="h-8 rounded-[12px] bg-primary px-3 text-[0.74rem] font-semibold text-primary-foreground hover:bg-primary/90"
               onClick={() => void handleSave()}
               disabled={!modified || saving}
             >
@@ -144,10 +144,10 @@ export function SshSftpFilePreview({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden bg-white">
+      <div className="min-h-0 flex-1 overflow-hidden bg-background">
         {textBased && loading ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-[#2f8cf3]" />
+            <Loader2 className="size-5 animate-spin text-primary" />
           </div>
         ) : viewerType === 'fallback' ? (
           <CodeEditor
@@ -162,7 +162,7 @@ export function SshSftpFilePreview({
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center">
-                <Loader2 className="size-5 animate-spin text-[#2f8cf3]" />
+                <Loader2 className="size-5 animate-spin text-primary" />
               </div>
             }
           >
