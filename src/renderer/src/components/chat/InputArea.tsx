@@ -344,12 +344,7 @@ const MIN_MESSAGE_LIST_HEIGHT = 120
 const EDITOR_MIN_HEIGHT = 60
 const FALLBACK_MAX_VIEWPORT_RATIO = 0.6
 const MAX_SLASH_COMMAND_RESULTS = 8
-const BUILTIN_SLASH_COMMANDS: CommandCatalogItem[] = [
-  {
-    name: 'goal',
-    summary: 'Set, view, pause, resume, edit, or clear the active session goal.'
-  }
-]
+const BUILTIN_SLASH_COMMANDS: CommandCatalogItem[] = []
 type ContextCompressionStatus = 'idle' | 'compressing' | ManualCompressionResult
 
 function getSlashCommandQuery(text: string): string | null {
