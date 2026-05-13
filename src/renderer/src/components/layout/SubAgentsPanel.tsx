@@ -63,8 +63,8 @@ function getHistoryGroupLabel(
   const targetStart = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime()
   const diffDays = Math.floor((nowStart - targetStart) / DAY_MS)
 
-  if (diffDays === 0) return t('subAgentsPanel.groupToday', { defaultValue: '今天' })
-  if (diffDays === 1) return t('subAgentsPanel.groupYesterday', { defaultValue: '昨天' })
+  if (diffDays === 0) return t('subAgentsPanel.groupToday', { defaultValue: 'Today' })
+  if (diffDays === 1) return t('subAgentsPanel.groupYesterday', { defaultValue: 'Yesterday' })
   return target.toLocaleDateString()
 }
 
@@ -124,15 +124,15 @@ function getToolCallStatusLabel(status: ToolCallState['status']): string {
   switch (status) {
     case 'running':
     case 'streaming':
-      return '运行中'
+      return 'Running'
     case 'pending_approval':
-      return '待确认'
+      return 'Pending approval'
     case 'completed':
-      return '已完成'
+      return 'Completed'
     case 'error':
-      return '失败'
+      return 'Failed'
     case 'canceled':
-      return '已取消'
+      return 'Cancelled'
     default:
       return status
   }
@@ -414,7 +414,7 @@ export function SubAgentsPanel(): React.JSX.Element {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-sm font-semibold text-foreground/92">
-                {t('subAgentsPanel.title', { defaultValue: '任务执行' })}
+                {t('subAgentsPanel.title', { defaultValue: 'Task execution' })}
               </h2>
               <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px]">
                 {visibleCount}
@@ -422,7 +422,7 @@ export function SubAgentsPanel(): React.JSX.Element {
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground/65">
               {t('subAgentsPanel.subtitle', {
-                defaultValue: '运行中置顶，历史按日期分组，结果优先展示'
+                defaultValue: 'Running pinned to top, history grouped by date, results shown first'
               })}
             </p>
           </div>
@@ -440,10 +440,10 @@ export function SubAgentsPanel(): React.JSX.Element {
         <div className="mt-2 flex flex-wrap gap-1.5">
           {(
             [
-              ['all', t('subAgentsPanel.filterAll', { defaultValue: '全部' })],
-              ['running', t('subAgentsPanel.filterRunning', { defaultValue: '运行中' })],
-              ['completed', t('subAgentsPanel.filterCompleted', { defaultValue: '已完成' })],
-              ['today', t('subAgentsPanel.filterToday', { defaultValue: '今天' })]
+              ['all', t('subAgentsPanel.filterAll', { defaultValue: 'All' })],
+              ['running', t('subAgentsPanel.filterRunning', { defaultValue: 'Running' })],
+              ['completed', t('subAgentsPanel.filterCompleted', { defaultValue: 'Completed' })],
+              ['today', t('subAgentsPanel.filterToday', { defaultValue: 'Today' })]
             ] as Array<[PanelFilter, string]>
           ).map(([value, label]) => {
             const active = filter === value
@@ -471,7 +471,7 @@ export function SubAgentsPanel(): React.JSX.Element {
           <section className="mb-4">
             <div className="mb-2 flex items-center gap-2 px-1 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/60">
               <Loader2 className="size-3 animate-spin" />
-              <span>{t('subAgentsPanel.running', { defaultValue: '运行中' })}</span>
+              <span>{t('subAgentsPanel.running', { defaultValue: 'Running' })}</span>
             </div>
             <div className="space-y-3">
               {runningAgents.map((agent) => (
@@ -540,7 +540,7 @@ export function SubAgentsPanel(): React.JSX.Element {
         {visibleCount === 0 ? (
           <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-border/60 bg-background/40 text-sm text-muted-foreground">
             {t('subAgentsPanel.emptyFiltered', {
-              defaultValue: '当前筛选条件下暂无执行记录'
+              defaultValue: 'No execution records under current filter'
             })}
           </div>
         ) : null}
@@ -577,7 +577,7 @@ function SubAgentRunHoverContent({
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-white/88">{displayName}</div>
             <div className="mt-0.5 text-[11px] text-white/45">
-              {agent.isRunning ? '运行中' : isFailed ? '失败' : '已完成'}
+              {agent.isRunning ? 'Running' : isFailed ? 'Failed' : 'Completed'}
             </div>
           </div>
           <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-white/60">
@@ -589,7 +589,7 @@ function SubAgentRunHoverContent({
           <section className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/40">
               <FileText className="size-3" />
-              <span>描述</span>
+              <span>Description</span>
             </div>
             <div className="whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[12px] leading-5 text-white/72">
               {agent.description}
@@ -613,7 +613,7 @@ function SubAgentRunHoverContent({
           <section className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/40">
               <Sparkles className="size-3" />
-              <span>{agent.isRunning ? '最近进度' : '结果摘要'}</span>
+              <span>{agent.isRunning ? 'Recent progress' : 'Result summary'}</span>
             </div>
             <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[12px] leading-5 text-white/72">
               {summary}
@@ -624,7 +624,7 @@ function SubAgentRunHoverContent({
         <section className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/40">
             <Wrench className="size-3" />
-            <span>执行列表</span>
+            <span>Execution list</span>
             <span className="text-white/28">{agent.toolCalls.length}</span>
           </div>
           {visibleToolCalls.length > 0 ? (
@@ -651,7 +651,7 @@ function SubAgentRunHoverContent({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-2.5 py-2 text-[12px] text-white/45">
-              暂无工具调用记录
+              No tool call records
             </div>
           )}
         </section>
@@ -703,10 +703,10 @@ function SubAgentRunCard({
               )}
             >
               {agent.isRunning
-                ? t('subAgentsPanel.running', { defaultValue: '运行中' })
+                ? t('subAgentsPanel.running', { defaultValue: 'Running' })
                 : isFailed
-                  ? t('detailPanel.error', { defaultValue: '失败' })
-                  : t('subAgentsPanel.completed', { defaultValue: '已完成' })}
+                  ? t('detailPanel.error', { defaultValue: 'Failed' })
+                  : t('subAgentsPanel.completed', { defaultValue: 'Completed' })}
             </Badge>
           </div>
 
@@ -722,8 +722,8 @@ function SubAgentRunCard({
                 <Sparkles className="size-3" />
                 <span>
                   {agent.isRunning
-                    ? t('subAgentsPanel.recentProgress', { defaultValue: '最近进度' })
-                    : t('subAgentsPanel.summary', { defaultValue: '结果摘要' })}
+                    ? t('subAgentsPanel.recentProgress', { defaultValue: 'Recent progress' })
+                    : t('subAgentsPanel.summary', { defaultValue: 'Result summary' })}
                 </span>
               </div>
               <p className="line-clamp-4 whitespace-pre-wrap break-words text-[12px] leading-5 text-foreground/88">
@@ -734,9 +734,9 @@ function SubAgentRunCard({
             <div className="mt-3 rounded-2xl border border-dashed border-border/60 bg-muted/15 px-3 py-3 text-sm text-muted-foreground/65">
               {agent.isRunning
                 ? t('subAgentsPanel.summaryStreaming', {
-                    defaultValue: '正在生成进度摘要…'
+                    defaultValue: 'Generating progress summary...'
                   })
-                : t('subAgentsPanel.summaryEmpty', { defaultValue: '暂无可展示摘要' })}
+                : t('subAgentsPanel.summaryEmpty', { defaultValue: 'No summary available to display' })}
             </div>
           )}
 
@@ -748,13 +748,13 @@ function SubAgentRunCard({
             <span className="rounded-full border border-border/60 bg-background/70 px-2.5 py-1">
               {t('detailPanel.iterations', {
                 count: agent.iteration,
-                defaultValue: `迭代：${agent.iteration}`
+                defaultValue: `Iteration: ${agent.iteration}`
               })}
             </span>
             <span className="rounded-full border border-border/60 bg-background/70 px-2.5 py-1">
               {t('detailPanel.toolCalls', {
                 count: agent.toolCalls.length,
-                defaultValue: `工具调用：${agent.toolCalls.length}`
+                defaultValue: `Tool calls: ${agent.toolCalls.length}`
               })}
             </span>
             <span className="rounded-full border border-border/60 bg-background/70 px-2.5 py-1">
@@ -799,7 +799,7 @@ function SubAgentRunCard({
             <div className="min-w-0 space-y-4">
               <section>
                 <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/55">
-                  {t('subAgentsPanel.reportBody', { defaultValue: '结果正文' })}
+                  {t('subAgentsPanel.reportBody', { defaultValue: 'Result body' })}
                 </div>
                 {summary ? (
                   <div className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground/90 prose-li:text-foreground/90 prose-strong:text-foreground dark:prose-invert">
@@ -808,11 +808,11 @@ function SubAgentRunCard({
                 ) : (
                   <div className="text-sm text-muted-foreground/70">
                     {agent.reportStatus === 'retrying'
-                      ? t('subAgentsPanel.reportStatusRetrying', { defaultValue: '补救中' })
+                      ? t('subAgentsPanel.reportStatusRetrying', { defaultValue: 'Recovering' })
                       : agent.reportStatus === 'missing'
-                        ? t('subAgentsPanel.reportMissing', { defaultValue: '未捕获到最终结果。' })
+                        ? t('subAgentsPanel.reportMissing', { defaultValue: 'No final result captured.' })
                         : t('subAgentsPanel.reportPending', {
-                            defaultValue: '当前执行尚未产出最终结果。'
+                            defaultValue: 'Current execution has not produced final results.'
                           })}
                   </div>
                 )}
@@ -821,7 +821,7 @@ function SubAgentRunCard({
               {agent.toolCalls.length > 0 ? (
                 <section>
                   <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/55">
-                    {t('subAgentsPanel.execution', { defaultValue: '执行过程' })}
+                    {t('subAgentsPanel.execution', { defaultValue: 'Execution process' })}
                   </div>
                   <div className="space-y-2">
                     {agent.toolCalls.slice(-8).map((toolCall) => (
@@ -857,14 +857,14 @@ function SubAgentRunCard({
             <aside className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-3">
               <section>
                 <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/55">
-                  {t('subAgentsPanel.description', { defaultValue: '描述' })}
+                  {t('subAgentsPanel.description', { defaultValue: 'Description' })}
                 </div>
                 <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/88">
                   {agent.description || '—'}
                 </div>
               </section>
               <Button className="w-full gap-2" onClick={onOpenDetail}>
-                {t('subAgentsPanel.openFullDetail', { defaultValue: '打开完整详情' })}
+                {t('subAgentsPanel.openFullDetail', { defaultValue: 'Open full details' })}
                 <ExternalLink className="size-4" />
               </Button>
             </aside>

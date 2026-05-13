@@ -265,40 +265,40 @@ export function Layout({ updateInfo, onOpenUpdateDialog }: LayoutProps): React.J
   const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar)
   const contentHeader = useMemo(() => {
     if (tasksPageOpen) {
-      return { title: t('navRail.tasks', { defaultValue: '任务' }), subtitle: null }
+      return { title: t('navRail.tasks', { defaultValue: 'Tasks' }), subtitle: null }
     }
     if (resourcesPageOpen) {
-      return { title: t('navRail.resources', { defaultValue: '资源' }), subtitle: null }
+      return { title: t('navRail.resources', { defaultValue: 'Resources' }), subtitle: null }
     }
     if (skillsPageOpen) {
-      return { title: t('navRail.skills', { defaultValue: '工具' }), subtitle: null }
+      return { title: t('navRail.skills', { defaultValue: 'Tools' }), subtitle: null }
     }
     if (settingsPageOpen) {
-      return { title: t('navRail.settings', { defaultValue: '设置' }), subtitle: null }
+      return { title: t('navRail.settings', { defaultValue: 'Settings' }), subtitle: null }
     }
     if (drawPageOpen) {
-      return { title: t('navRail.draw', { defaultValue: '绘图' }), subtitle: null }
+      return { title: t('navRail.draw', { defaultValue: 'Drawing' }), subtitle: null }
     }
     if (translatePageOpen) {
-      return { title: t('navRail.translate', { defaultValue: '翻译' }), subtitle: null }
+      return { title: t('navRail.translate', { defaultValue: 'Translate' }), subtitle: null }
     }
     if (chatView === 'project') {
       return {
-        title: activeProjectName ?? t('sidebar.projects', { defaultValue: '项目' }),
+        title: activeProjectName ?? t('sidebar.projects', { defaultValue: 'Projects' }),
         subtitle: null,
         tooltip: activeProjectWorkingFolder
       }
     }
     if (chatView === 'archive') {
       return {
-        title: t('sidebar.projectArchive', { defaultValue: '项目档案' }),
+        title: t('sidebar.projectArchive', { defaultValue: 'Project archive' }),
         subtitle: null,
         tooltip: activeProjectWorkingFolder
       }
     }
     if (chatView === 'channels') {
       return {
-        title: t('projectHome.openChannels', { defaultValue: '频道' }),
+        title: t('projectHome.openChannels', { defaultValue: 'Channel' }),
         subtitle: null,
         tooltip: activeProjectWorkingFolder
       }
@@ -318,7 +318,7 @@ export function Layout({ updateInfo, onOpenUpdateDialog }: LayoutProps): React.J
       }
     }
     return {
-      title: t('sidebar.newChat', { defaultValue: '新建聊天' }),
+      title: t('sidebar.newChat', { defaultValue: 'New Chat' }),
       subtitle: null,
       tooltip: mode !== 'chat' ? activeProjectWorkingFolder : null
     }

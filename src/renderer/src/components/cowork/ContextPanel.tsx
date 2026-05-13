@@ -461,7 +461,7 @@ export function ContextPanel(): React.JSX.Element {
                     {pct !== null && (
                       <div className="mt-1 space-y-0.5">
                         <div className="flex items-center justify-between text-[9px] text-muted-foreground/40">
-                          <span>{t('compressionBudget', { defaultValue: '压缩预算' })}</span>
+                          <span>{t('compressionBudget', { defaultValue: 'Compression budget' })}</span>
                           <span>
                             {formatTokens(ctxUsed)} / {formatTokens(ctxGaugeLimit!)} (
                             {pct.toFixed(0)}%)
@@ -477,13 +477,13 @@ export function ContextPanel(): React.JSX.Element {
                           <div className="flex items-center justify-between text-[9px] text-muted-foreground/40">
                             <span>
                               {t('manualCompressionThreshold', {
-                                defaultValue: '建议手动压缩 >= {{threshold}}',
+                                defaultValue: 'Recommend manual compress >= {{threshold}}',
                                 threshold: formatTokens(manualCompressionTrigger)
                               })}
                             </span>
                             <span>
                               {t('autoCompressionThreshold', {
-                                defaultValue: '自动压缩 >= {{threshold}}',
+                                defaultValue: 'Auto compress >= {{threshold}}',
                                 threshold: formatTokens(autoCompressionTrigger)
                               })}
                             </span>
@@ -505,12 +505,12 @@ export function ContextPanel(): React.JSX.Element {
                           onClick={() => setShowCompressPanel(true)}
                         >
                           <Archive className="size-3" />
-                          {compressing ? '压缩中...' : '压缩上下文'}
+                          {compressing ? 'Compressing...' : 'Compress context'}
                         </Button>
                         {manualCompressionTrigger && ctxUsed < manualCompressionTrigger ? (
                           <p className="mt-1 text-[10px] text-muted-foreground/60">
                             {t('manualCompressionHint', {
-                              defaultValue: '当前 {{used}}，建议达到 {{threshold}} 后再压缩',
+                              defaultValue: 'Current {{used}}, recommend compressing after reaching {{threshold}}',
                               used: formatTokens(ctxUsed),
                               threshold: formatTokens(manualCompressionTrigger)
                             })}
@@ -525,7 +525,7 @@ export function ContextPanel(): React.JSX.Element {
                           <input
                             type="text"
                             className="w-full rounded border bg-background px-2 py-1 text-[11px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
-                            placeholder="聚焦方向（可选），如：保留 API 相关变更"
+                            placeholder="Focus area (optional), e.g.: keep API-related changes"
                             value={focusPrompt}
                             onChange={(e) => setFocusPrompt(e.target.value)}
                             disabled={compressing}
@@ -557,7 +557,7 @@ export function ContextPanel(): React.JSX.Element {
                               }}
                             >
                               <Archive className="size-3 mr-1" />
-                              {compressing ? '压缩中...' : '确认压缩'}
+                              {compressing ? 'Compressing...' : 'Confirm compression'}
                             </Button>
                             <Button
                               variant="ghost"
@@ -569,7 +569,7 @@ export function ContextPanel(): React.JSX.Element {
                                 setFocusPrompt('')
                               }}
                             >
-                              取消
+                              Cancel
                             </Button>
                           </div>
                         </div>

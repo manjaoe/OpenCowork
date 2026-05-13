@@ -54,19 +54,19 @@ export function buildDayWindow(pastDays = 7, futureDays = 30): DayWindowEntry[] 
 export function formatDayLabel(date: Date): string {
   const todayKey = dateKeyFromTimestamp(Date.now())
   const key = dateKeyFromDate(date)
-  if (key === todayKey) return '今天'
+  if (key === todayKey) return 'Today'
   const tomorrow = new Date(startOfLocalDay(Date.now()))
   tomorrow.setDate(tomorrow.getDate() + 1)
-  if (key === dateKeyFromDate(tomorrow)) return '明天'
+  if (key === dateKeyFromDate(tomorrow)) return 'Tomorrow'
   const yesterday = new Date(startOfLocalDay(Date.now()))
   yesterday.setDate(yesterday.getDate() - 1)
-  if (key === dateKeyFromDate(yesterday)) return '昨天'
-  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })
+  if (key === dateKeyFromDate(yesterday)) return 'Yesterday'
+  return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', weekday: 'short' })
 }
 
 export function formatTimeLabel(timestamp: number | null | undefined): string {
   if (!timestamp) return '—'
-  return new Date(timestamp).toLocaleTimeString('zh-CN', {
+  return new Date(timestamp).toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit'
   })
@@ -74,7 +74,7 @@ export function formatTimeLabel(timestamp: number | null | undefined): string {
 
 export function formatDateTimeLabel(timestamp: number | null | undefined): string {
   if (!timestamp) return '—'
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  return new Date(timestamp).toLocaleString('en-US', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

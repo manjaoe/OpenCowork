@@ -38,28 +38,28 @@ function getInboxIcon(item: PendingInboxItem): React.JSX.Element {
 function getInboxTypeLabel(item: PendingInboxItem): string {
   switch (item.type) {
     case 'approval':
-      return '审批'
+      return 'Approval'
     case 'preview_ready':
-      return '预览'
+      return 'Preview'
     case 'ask_user':
-      return '提问'
+      return 'Question'
     case 'desktop_control':
-      return '桌面'
+      return 'Desktop'
     case 'foreground_bash':
-      return '终端'
+      return 'Terminal'
     case 'error':
-      return '错误'
+      return 'Error'
     default:
-      return '待处理'
+      return 'Pending'
   }
 }
 
 function formatCreatedAt(timestamp: number): string {
   const delta = Date.now() - timestamp
-  if (delta < 60_000) return '刚刚'
-  if (delta < 3_600_000) return `${Math.max(1, Math.floor(delta / 60_000))} 分钟前`
-  if (delta < 86_400_000) return `${Math.max(1, Math.floor(delta / 3_600_000))} 小时前`
-  return `${Math.max(1, Math.floor(delta / 86_400_000))} 天前`
+  if (delta < 60_000) return 'just now'
+  if (delta < 3_600_000) return `${Math.max(1, Math.floor(delta / 60_000))} minutes ago`
+  if (delta < 86_400_000) return `${Math.max(1, Math.floor(delta / 3_600_000))} hours ago`
+  return `${Math.max(1, Math.floor(delta / 86_400_000))} days ago`
 }
 
 async function openInboxItem(item: PendingInboxItem): Promise<void> {
@@ -82,8 +82,8 @@ async function openInboxItem(item: PendingInboxItem): Promise<void> {
     }
   } catch (error) {
     console.error('[PendingInboxPopover] Failed to open inbox item:', error)
-    toast.error('打开待处理项失败', {
-      description: error instanceof Error ? error.message : '请稍后重试'
+    toast.error('Failed to open pending item', {
+      description: error instanceof Error ? error.message : 'Please try again later'
     })
   }
 }
@@ -98,7 +98,7 @@ export function PendingInboxPopover(): React.JSX.Element | null {
   const sessionTitleById = useMemo(
     () =>
       Object.fromEntries(
-        sessions.map((session) => [session.id, session.title || '未命名会话'])
+        sessions.map((session) => [session.id, session.title || 'Untitled session'])
       ) as Record<string, string>,
     [sessions]
   )
@@ -114,7 +114,7 @@ export function PendingInboxPopover(): React.JSX.Element | null {
           className="titlebar-no-drag relative h-7 gap-1.5 px-2 text-[10px]"
         >
           <Bell className="size-3.5" />
-          待处理
+          Pending
           <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[9px]">
             {unresolvedItems.length > 99 ? '99+' : unresolvedItems.length}
           </Badge>
@@ -122,8 +122,8 @@ export function PendingInboxPopover(): React.JSX.Element | null {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[24rem] p-2">
         <div className="mb-2 flex items-center justify-between px-1">
-          <div className="text-xs font-medium text-foreground/85">全局待处理</div>
-          <div className="text-[10px] text-muted-foreground">{unresolvedItems.length} 项</div>
+          <div className="text-xs font-medium text-foreground/85">Global pending</div>
+          <div className="text-[10px] text-muted-foreground">{unresolvedItems.length} items</div>
         </div>
         <div className="max-h-80 space-y-1 overflow-y-auto">
           {unresolvedItems.map((item) => (
@@ -142,7 +142,7 @@ export function PendingInboxPopover(): React.JSX.Element | null {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="truncate text-xs font-medium text-foreground/90">
-                      {sessionTitleById[item.sessionId] ?? '后台会话'}
+                      {sessionTitleById[item.sessionId] ?? 'Background session'}
                     </span>
                     <Badge variant="outline" className="px-1 py-0 text-[9px]">
                       {getInboxTypeLabel(item)}
@@ -172,7 +172,7 @@ export function PendingInboxPopover(): React.JSX.Element | null {
                     className="h-6 px-2 text-[10px]"
                     onClick={() => resolveInboxItem(item.id)}
                   >
-                    忽略
+                    Dismiss
                   </Button>
                 </div>
               ) : null}

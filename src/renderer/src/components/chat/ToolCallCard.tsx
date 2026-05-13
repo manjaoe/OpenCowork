@@ -2172,7 +2172,7 @@ function StructuredInput({
     const prompt = input.prompt ? String(input.prompt) : null
     const deleteAfterRun = Boolean(input.deleteAfterRun)
     const agentId = input.agentId ? String(input.agentId) : null
-    const kindLabels: Record<string, string> = { at: '一次性', every: '间隔', cron: 'Cron' }
+    const kindLabels: Record<string, string> = { at: 'Once', every: 'Interval', cron: 'Cron' }
     const kindColors: Record<string, string> = {
       at: 'bg-amber-500/10 text-amber-400',
       every: 'bg-cyan-500/10 text-cyan-400',
@@ -2563,7 +2563,7 @@ function ToolCallCardInner({
               <>
                 {name === 'Write' && (input.file_path || input.path) ? (
                   <span className="text-blue-500/80 text-[10px] animate-pulse dark:text-blue-400/70">
-                    写入:{' '}
+                    Write:{' '}
                     {String(input.file_path || input.path)
                       .split(/[\\/]/)
                       .slice(-2)
@@ -2574,7 +2574,7 @@ function ToolCallCardInner({
                   </span>
                 ) : name === 'Edit' && (input.file_path || input.path) ? (
                   <span className="text-amber-600/80 text-[10px] animate-pulse dark:text-amber-400/70">
-                    编辑:{' '}
+                    Edit:{' '}
                     {String(input.file_path || input.path)
                       .split(/[\\/]/)
                       .slice(-2)

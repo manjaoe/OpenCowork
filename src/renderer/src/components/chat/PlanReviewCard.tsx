@@ -94,38 +94,38 @@ function getStatusAppearance(status: PlanStatus): {
       return {
         badgeClassName: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
         labelKey: 'planReview.awaitingReview',
-        defaultValue: '待审阅'
+        defaultValue: 'Pending review'
       }
     case 'approved':
       return {
         badgeClassName:
           'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
         labelKey: 'planReview.approved',
-        defaultValue: '已批准'
+        defaultValue: 'Approved'
       }
     case 'implementing':
       return {
         badgeClassName: 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300',
         labelKey: 'planReview.implementing',
-        defaultValue: '实施中'
+        defaultValue: 'Implementing'
       }
     case 'completed':
       return {
         badgeClassName: 'border-border bg-muted text-muted-foreground',
         labelKey: 'planReview.completed',
-        defaultValue: '已完成'
+        defaultValue: 'Completed'
       }
     case 'rejected':
       return {
         badgeClassName: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
         labelKey: 'planReview.rejected',
-        defaultValue: '待修订'
+        defaultValue: 'Pending revision'
       }
     default:
       return {
         badgeClassName: 'border-border bg-muted text-muted-foreground',
         labelKey: 'planReview.drafting',
-        defaultValue: '草稿'
+        defaultValue: 'Draft'
       }
   }
 }
@@ -170,7 +170,7 @@ export function PlanReviewCard({
       <div className="my-3 rounded-xl border border-border/70 bg-background/70 p-4 shadow-sm">
         <div className="flex items-center gap-2 text-sm text-foreground">
           <Loader2 className="size-4 animate-spin text-amber-500" />
-          <span>{t('planReview.processing', { defaultValue: '正在整理计划审阅内容…' })}</span>
+          <span>{t('planReview.processing', { defaultValue: 'Preparing plan review content...' })}</span>
         </div>
       </div>
     )
@@ -181,7 +181,7 @@ export function PlanReviewCard({
       <div className="my-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <TriangleAlert className="size-4 text-red-500" />
-          <span>{t('planReview.errorTitle', { defaultValue: '计划审阅卡片渲染失败' })}</span>
+          <span>{t('planReview.errorTitle', { defaultValue: 'Plan review card render failed' })}</span>
         </div>
         {outputText && (
           <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg border border-red-500/20 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
@@ -202,7 +202,7 @@ export function PlanReviewCard({
           </div>
           {payload.filePath && (
             <div className="mt-1 text-xs text-muted-foreground">
-              {t('planReview.planFile', { defaultValue: '计划文件' })}: {payload.filePath}
+              {t('planReview.planFile', { defaultValue: 'Plan file' })}: {payload.filePath}
             </div>
           )}
         </div>
@@ -242,7 +242,7 @@ export function PlanReviewCard({
               ) : (
                 <Play className="size-3.5" />
               )}
-              {t('planReview.implement', { defaultValue: '实施此计划' })}
+              {t('planReview.implement', { defaultValue: 'Implement this plan' })}
             </Button>
             <Button
               variant="outline"
@@ -254,7 +254,7 @@ export function PlanReviewCard({
               disabled={isRunning}
             >
               <MessageSquarePlus className="size-3.5" />
-              {t('planReview.executeInNewSession', { defaultValue: '新会话执行' })}
+              {t('planReview.executeInNewSession', { defaultValue: 'Execute in new session' })}
             </Button>
           </>
         )}
@@ -264,10 +264,10 @@ export function PlanReviewCard({
             <span>
               {executionSession && executionSession.id !== activeSessionId
                 ? t('planReview.runningInSession', {
-                    defaultValue: '该计划正在会话“{{title}}”中执行。',
+                    defaultValue: 'This plan is running in session “{{title}}”.',
                     title: executionSession.title || 'New Conversation'
                   })
-                : t('planReview.runningHint', { defaultValue: '当前会话正在按该计划实施。' })}
+                : t('planReview.runningHint', { defaultValue: 'The current session is implementing this plan.' })}
             </span>
             {executionSession && executionSession.id !== activeSessionId && (
               <Button
@@ -279,7 +279,7 @@ export function PlanReviewCard({
                   useUIStore.getState().navigateToSession(executionSession.id)
                 }}
               >
-                {t('planReview.openExecutionSession', { defaultValue: '打开执行会话' })}
+                {t('planReview.openExecutionSession', { defaultValue: 'Open execution session' })}
               </Button>
             )}
           </div>
@@ -287,7 +287,7 @@ export function PlanReviewCard({
         {displayStatus === 'approved' && (
           <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-300">
             <CheckCircle2 className="size-3.5" />
-            <span>{t('planReview.approvedHint', { defaultValue: '该计划已批准。' })}</span>
+            <span>{t('planReview.approvedHint', { defaultValue: 'This plan has been approved.' })}</span>
           </div>
         )}
       </div>

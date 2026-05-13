@@ -1629,33 +1629,33 @@ function formatLayeredError(
     const layered = err as LayeredSshError
     const raw = layered.message || ''
     if (layered.stage === 'jump_auth') {
-      return `跳板机认证失败：${raw}`
+      return `Jump host authentication failed: ${raw}`
     }
     if (layered.stage === 'jump_connect') {
-      return `跳板机连接失败：${raw}`
+      return `Jump host connection failed: ${raw}`
     }
     if (layered.stage === 'target_auth') {
-      if (fallbackAuthType === 'password') return '目标主机密码认证失败，请检查密码。'
-      if (fallbackAuthType === 'privateKey') return '目标主机私钥认证失败，请检查密钥或口令。'
-      if (fallbackAuthType === 'agent') return '目标主机 SSH Agent 认证失败，请检查 Agent 状态。'
-      return `目标主机认证失败：${raw}`
+      if (fallbackAuthType === 'password') return 'Target host password authentication failed, please check your password.'
+      if (fallbackAuthType === 'privateKey') return 'Target host private key authentication failed, please check key or passphrase.'
+      if (fallbackAuthType === 'agent') return 'Target host SSH Agent authentication failed, please check Agent status.'
+      return `Target host authentication failed: ${raw}`
     }
     if (layered.stage === 'target_connect') {
-      return `目标主机连接失败：${raw}`
+      return `Target host connection failed: ${raw}`
     }
     return raw
   }
 
   const message = err instanceof Error ? err.message : String(err)
-  if (message.includes('ECONNREFUSED')) return '连接被拒绝，请检查主机和端口。'
+  if (message.includes('ECONNREFUSED')) return 'Connection refused, please check host and port.'
   if (message.includes('ETIMEDOUT') || message.includes('timeout'))
-    return '连接超时，请检查网络可达性。'
+    return 'Connection timed out, please check network reachability.'
   if (message.includes('ENOTFOUND') || message.includes('getaddrinfo'))
-    return '主机不可解析，请检查主机名或 IP。'
+    return 'Host not resolvable, please check hostname or IP.'
   if (isAuthFailureMessage(message)) {
-    if (fallbackAuthType === 'password') return '密码认证失败，请检查密码。'
-    if (fallbackAuthType === 'privateKey') return '私钥认证失败，请检查密钥文件和口令。'
-    if (fallbackAuthType === 'agent') return 'SSH Agent 认证失败，请检查 Agent 是否可用。'
+    if (fallbackAuthType === 'password') return 'Password authentication failed, please check password.'
+    if (fallbackAuthType === 'privateKey') return 'Private key authentication failed, please check key file and passphrase.'
+    if (fallbackAuthType === 'agent') return 'SSH Agent authentication failed, please check Agent availability.'
   }
   return message
 }

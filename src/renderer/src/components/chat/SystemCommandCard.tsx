@@ -42,8 +42,8 @@ export function SystemCommandCard({ command }: SystemCommandCardProps): React.JS
             </span>
             <span className="text-[10px] text-muted-foreground">
               {expanded
-                ? t('userMessage.hideCommand', { defaultValue: '收起命令' })
-                : t('userMessage.showCommand', { defaultValue: '展开命令' })}
+                ? t('userMessage.hideCommand', { defaultValue: 'Collapse commands' })
+                : t('userMessage.showCommand', { defaultValue: 'Expand commands' })}
             </span>
           </span>
           {!expanded && preview && (

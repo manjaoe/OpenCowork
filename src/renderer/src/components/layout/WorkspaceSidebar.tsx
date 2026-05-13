@@ -890,28 +890,28 @@ export function WorkspaceSidebar(): React.JSX.Element {
   const navItems = [
     {
       key: 'new-chat',
-      label: t('sidebar.newChat', { defaultValue: '新建聊天' }),
+      label: t('sidebar.newChat', { defaultValue: 'New Chat' }),
       icon: <Pencil className="size-4 shrink-0" />,
       active: false,
       onClick: handleCreateChatSession
     },
     {
       key: 'search',
-      label: t('sidebar.searchLabel', { defaultValue: '搜索' }),
+      label: t('sidebar.searchLabel', { defaultValue: 'Search' }),
       icon: <Search className="size-4 shrink-0" />,
       active: false,
       onClick: openCommandPalette
     },
     {
       key: 'plugins',
-      label: t('sidebar.pluginsLabel', { defaultValue: '插件' }),
+      label: t('sidebar.pluginsLabel', { defaultValue: 'Plugins' }),
       icon: <Wand2 className="size-4 shrink-0" />,
       active: settingsPageOpen && useUIStore.getState().settingsTab === 'plugin',
       onClick: () => useUIStore.getState().openSettingsPage('plugin')
     },
     {
       key: 'automation',
-      label: t('sidebar.automationLabel', { defaultValue: '自动化' }),
+      label: t('sidebar.automationLabel', { defaultValue: 'Automation' }),
       icon: <CalendarDays className="size-4 shrink-0" />,
       active: tasksPageOpen,
       onClick: () => useUIStore.getState().openTasksPage()
@@ -1420,7 +1420,7 @@ export function WorkspaceSidebar(): React.JSX.Element {
                                   <Pin className="size-3.5 text-amber-500" />
                                 ) : null}
                                 <span className="text-muted-foreground/80">
-                                  {project.sshConnectionId ? 'SSH' : '本地'}
+                                  {project.sshConnectionId ? 'SSH' : 'Local'}
                                 </span>
                                 <span>{group.sessions.length}</span>
                                 <ChevronRight
@@ -1760,7 +1760,7 @@ export function WorkspaceSidebar(): React.JSX.Element {
               <div className="flex items-center justify-between gap-2 px-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/80">
-                    {t('sidebar.chats', { defaultValue: '聊天' })}
+                    {t('sidebar.chats', { defaultValue: 'Chats' })}
                   </span>
                   <span className="rounded-full border border-border/60 bg-muted/45 px-1 py-0.5 text-[9px] text-muted-foreground">
                     {chatSessions.length}
@@ -1799,7 +1799,7 @@ export function WorkspaceSidebar(): React.JSX.Element {
                     size="icon"
                     className="size-4"
                     onClick={handleCreateChatSession}
-                    title={t('sidebar.newChat', { defaultValue: '新建聊天' })}
+                    title={t('sidebar.newChat', { defaultValue: 'New Chat' })}
                   >
                     <Plus className="size-2.5" />
                   </Button>
@@ -1817,7 +1817,7 @@ export function WorkspaceSidebar(): React.JSX.Element {
                   )
                 ) : (
                   <div className="px-1.5 py-1 text-[10px] text-muted-foreground">
-                    {t('sidebar.noChats', { defaultValue: '暂无聊天' })}
+                    {t('sidebar.noChats', { defaultValue: 'No chats yet' })}
                   </div>
                 )}
               </div>

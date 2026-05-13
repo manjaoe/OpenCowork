@@ -769,6 +769,32 @@ function createWindow(): void {
   })
 
   void loadRendererWindow(window)
+
+  // Zoom support: Ctrl/Cmd + Plus/Minus/0 and trackpad pinch
+  const ZOOM_MIN = 0.75
+  const ZOOM_MAX = 2.0
+  const ZOOM_STEP = 0.1
+
+  function clampZoom(zoom: number): number {
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom))
+  }
+
+  window.webContents.on('before-input-event', (_event, input) => {
+    if (input.control || input.meta) {
+      if (input.key === '=' || input.key === '+') {
+        const current = window.webContents.getZoomFactor()
+        window.webContents.setZoomFactor(clampZoom(current + ZOOM_STEP))
+      } else if (input.key === '-') {
+        const current = window.webContents.getZoomFactor()
+        window.webContents.setZoomFactor(clampZoom(current - ZOOM_STEP))
+      } else if (input.key === '0') {
+        window.webContents.setZoomFactor(1.0)
+      }
+    }
+  })
+
+  // Trackpad pinch-to-zoom
+  window.webContents.setVisualZoomLevelLimits(1, 5).catch(() => {})
 }
 
 async function createSshWindow(): Promise<void> {

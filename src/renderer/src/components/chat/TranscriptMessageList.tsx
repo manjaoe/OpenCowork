@@ -63,7 +63,7 @@ function TranscriptMessageListInner({
   )
 
   if (renderableMeta.length === 0) {
-    return <div className="text-sm text-muted-foreground/70">暂无回放</div>
+    return <div className="text-sm text-muted-foreground/70">No playback available</div>
   }
 
   return (

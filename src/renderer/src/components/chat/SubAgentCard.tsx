@@ -126,7 +126,7 @@ function SubAgentHoverContent({
           <section className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/40">
               <FileText className="size-3" />
-              <span>描述</span>
+              <span>Description</span>
             </div>
             <div className="whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[12px] leading-5 text-white/72">
               {descriptionText}

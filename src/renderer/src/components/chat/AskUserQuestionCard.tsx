@@ -47,7 +47,7 @@ interface AnsweredPair {
   annotation?: AskUserAnnotation
 }
 
-const RECOMMENDED_OPTION_RE = /(?:\(|（)\s*(recommended|推荐)\s*(?:\)|）)/i
+const RECOMMENDED_OPTION_RE = /(?:\(|（)\s*(recommended)\s*(?:\)|）)/i
 
 function getOptionLabel(label: string | undefined | null): string {
   return typeof label === 'string' ? label : ''

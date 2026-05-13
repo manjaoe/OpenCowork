@@ -1,38 +1,87 @@
-# Repository Guidelines
+# AGENTS.md
 
-## Project Structure & Module Organization
+## Project Overview
 
-- `src/main/` contains the Electron main process: app lifecycle, windows, IPC, SQLite, cron, plugins, MCP, SSH, updates, and crash handling.
-- `src/preload/` exposes secure `contextBridge` APIs only. Keep business logic out of preload.
-- `src/renderer/src/` hosts the React 19 UI, including `components/`, `stores/`, `hooks/`, `lib/`, `locales/`, and `assets/`.
-- `src/shared/` stores TypeScript types and constants shared across processes.
-- Main-process agent runtime lives under `src/main/ipc/` and `src/main/cron/`, and handles provider I/O, retries, approvals, and tool bridging.
-- Runtime assets live under `resources/agents`, `resources/skills`, `resources/prompts`, and `resources/commands`.
-- `docs/` contains the documentation site. Do not edit generated outputs in `dist/`, `out/`, `build/`, or `node_modules/`.
+OpenCowork is an open-source desktop platform for multi-agent AI collaboration. It provides local tools (file I/O, shell, code search), parallel sub-agent orchestration, and workplace messaging integration (Feishu, DingTalk, Discord, QQ, Telegram, WeCom, Weixin, WhatsApp). Built with Electron + React + Node.js.
 
-## Build, Test, and Development Commands
+**Target users:** Developers who want AI agents to work directly in their local codebase with tool access, context awareness, and human-in-the-loop approvals.
 
-- `npm install` installs root dependencies.
-- `npm run dev` starts Electron + Vite for local development.
-- `npm run start` previews the packaged app output.
-- `npm run lint` runs ESLint checks.
-- `npm run typecheck` validates both Node and renderer TypeScript.
-- `npm run format` applies Prettier formatting.
-- `npm run build` typechecks and builds the main and renderer bundles.
-- `npm run build:unpack` validates a local unpacked package.
+## Tech Stack
 
-## Coding Style & Naming Conventions
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Runtime | Electron | 36.9.5 |
+| Frontend | React | 19.2.4 |
+| Language | TypeScript | strict |
+| State | Zustand | - |
+| Styling | Tailwind CSS v4 | - |
+| Editor | Monaco Editor | - |
+| Terminal | xterm.js | 6.x |
+| Database | better-sqlite3 | - |
+| i18n | react-i18next | en/zh |
+| Build | electron-vite + electron-builder | - |
+| Node.js | >= 18 | - |
 
-Use UTF-8, LF line endings, 2-space indentation, single quotes, no semicolons, and a 100-character line width. TypeScript runs in strict mode. Use PascalCase for React components such as `Layout.tsx`, and kebab-case for non-component modules such as `settings-store.ts`. Renderer imports may use the `@renderer/*` alias. Keep comments sparse and high-signal: explain intent, invariants, process or security boundaries, and non-obvious async or state behavior; avoid comments that simply narrate the code. Add JSDoc only when an exported API's parameters, side effects, or contract are not obvious from the signature.
+## Project Structure
 
-## Testing Guidelines
+```
+src/
+├── main/              # Electron main process (system layer)
+│   ├── index.ts       # App bootstrap, window lifecycle
+│   ├── channels/      # 8 messaging platform plugins
+│   ├── cron/          # Scheduled task agent runtime
+│   ├── db/            # SQLite DAOs (messages, sessions, projects, tasks, plans)
+│   ├── ipc/           # IPC handlers (main↔renderer bridge)
+│   ├── mcp/           # Model Context Protocol client
+│   └── ssh/           # SSH/terminal support
+├── preload/           # Secure bridge (narrow API surface)
+├── renderer/src/      # React 19 UI
+│   ├── components/    # UI components (chat, cowork, settings, ssh, tasks)
+│   ├── hooks/         # React hooks
+│   ├── lib/           # Agent loop, tools, API clients, utilities
+│   ├── locales/       # i18n JSON files (en/zh, 7 namespaces)
+│   └── stores/        # Zustand stores
+└── shared/            # Cross-process TypeScript contracts
+```
 
-No dedicated automated test suite is configured. For any code change, run `npm run lint` and `npm run typecheck`. For IPC, main-process, or renderer interaction changes, also run `npm run dev` and perform a smoke test. For packaging work, run the relevant `build:*` command before release validation.
+**Entry points:** `src/main/index.ts` (main), `src/renderer/src/App.tsx` (renderer)
 
-## Commit & Pull Request Guidelines
+## Architecture
 
-Recent history mainly uses Conventional Commit prefixes such as `feat(ui)`, `feat(chat)`, `feat(sidebar)`, and `refactor`. Prefer the fuller `type(scope): summary` form, for example `feat(main): add cron validation`; use clear release or chore commits for version bumps. Keep pull requests focused on one goal and include scope, verification steps, commands run, linked issues, and screenshots or recordings for UI changes.
+- **4-layer Electron app:** Main process (system access) → Preload (secure bridge) → Renderer (UI) → Agent runtime (main process)
+- **IPC pattern:** Renderer calls `ipcClient.invoke(channel)`, main handles in `src/main/ipc/*-handlers.ts`
+- **Agent runtime:** Runs in main process (`js-agent-runtime.ts`), not renderer. Provider-agnostic, accepts generic provider object.
+- **Tool system:** Renderer-side tools in `src/renderer/src/lib/tools/`, registered in phases (core → skills → sub-agents → teams)
+- **Session modes:** `chat`, `clarify`, `cowork`, `code`, `acp` — each configures different prompts/tools/UI
+- **Channel plugins:** Extend `base-plugin-service.ts`, implement `onStart()`, `onStop()`, messaging methods
 
-## Security & Configuration Tips
+## Coding Rules
 
-Never commit secrets, private keys, `.env` files, local runtime data, or download caches. Pass sensitive values through configuration or parameters. Double-check packaging entries and bundled runtime assets before release.
+- **Formatting:** Prettier — single quotes, no semicolons, 100-col width, no trailing commas
+- **EditorConfig:** UTF-8, LF, 2 spaces, final newline
+- **Naming:** React components = PascalCase (`Layout.tsx`), stores/helpers = kebab-case (`chat-store.ts`)
+- **Commits:** Conventional — `feat(scope):`, `fix(scope):`, `chore(scope):`
+- **Path aliases:** `@renderer/*` → `src/renderer/src/*`
+- **i18n:** Use `t('key', { defaultValue: 'English text' })` — never hardcode Chinese in UI
+- **No tests:** There is no test suite. Validate with `npm run typecheck` and `npm run lint`
+
+## Key Commands
+
+```bash
+npm run dev          # Start Electron + Vite with hot reload
+npm run build        # Typecheck then build
+npm run build:win    # Full Windows installer
+npm run lint         # ESLint with cache
+npm run typecheck    # TypeScript check (both main and renderer)
+npm run format       # Prettier
+```
+
+## Gotchas
+
+- **Native modules:** `better-sqlite3`, `@jitsi/robotjs`, `ssh2`, `node-pty` require rebuild for Electron version via `npm run postinstall`. On Windows, `node-pty` is skipped.
+- **Data directory:** `~/.open-cowork/` — contains SQLite DB (`data.db`), config, agents, commands, prompts. Never commit this.
+- **SQLite schema:** Evolves via additive `ensureColumn` calls — columns are added if absent, never dropped. No migration files.
+- **i18n language:** Detected from OS locale on first launch. Chinese-locale systems default to Chinese. Change in Settings → General → Language.
+- **Dev server:** First launch compiles 98+ React modules (~30s). Subsequent launches are fast due to Vite dep caching.
+- **Zoom:** Ctrl/Cmd +/- for keyboard zoom (75%-200%), trackpad pinch for visual zoom (1x-5x). Configured in `src/main/index.ts`.
+- **Security:** Never commit secrets, private keys, `.env` files, or local runtime data from `~/.open-cowork/`.
