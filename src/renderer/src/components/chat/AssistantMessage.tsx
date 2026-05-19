@@ -51,7 +51,6 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 import { ToolCallCard, WidgetOutputBlock } from './ToolCallCard'
 import { ToolCallGroup } from './ToolCallGroup'
 import { FileChangeCard } from './FileChangeCard'
-import { RunChangeReviewCard } from './RunChangeReviewCard'
 import { SubAgentCard } from './SubAgentCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { TeamEventCard } from './TeamEventCard'
@@ -1374,7 +1373,6 @@ export function AssistantMessage({
     () => (runChangeSet ? aggregateDisplayableRunFileChanges(runChangeSet.changes) : []),
     [runChangeSet]
   )
-  const visibleRunChangeCount = visibleRunChanges.length
   const refreshRunChanges = useAgentStore((s) => s.refreshRunChanges)
   const refreshSessionRunChanges = useAgentStore((s) => s.refreshSessionRunChanges)
 
@@ -1558,8 +1556,8 @@ export function AssistantMessage({
       )
     }
 
-    // Show thinking indicator when streaming just started
-    if (isStreaming && typeof content === 'string' && content.length === 0) {
+    // Show thinking indicator when streaming starts with no displayable content yet.
+    if (isStreaming && hasEmptyContent) {
       return (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="flex gap-1">
@@ -1579,6 +1577,10 @@ export function AssistantMessage({
           <span className="text-xs text-muted-foreground/60">{t('thinking.thinkingEllipsis')}</span>
         </div>
       )
+    }
+
+    if (hasEmptyContent) {
+      return <></>
     }
 
     if (typeof content === 'string') {
@@ -2209,9 +2211,6 @@ export function AssistantMessage({
         ) : (
           <>
             {renderContent()}
-            {!isStreaming && runChangeSet && visibleRunChangeCount > 0 && (
-              <RunChangeReviewCard runId={runChangeSet.runId} changeSet={runChangeSet} />
-            )}
             {!isStreaming && plainText && (
               <p className="mt-1 text-[10px] text-muted-foreground/55 tabular-nums">
                 {usage

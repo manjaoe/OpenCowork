@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.97] - 2026-05-19
+
+### Changed
+
+- Refreshed the SSH and theme settings UI, including SSH connection management, terminal status presentation, and theme preset handling.
+- Improved the chat change review flow with a cleaner review card layout and updated transcript rendering.
+
+### Fixed
+
+- Fixed inconsistent code-block styling in SSH support workspaces.
+
 ## [0.9.96] - 2026-05-15
 
 ### Changed

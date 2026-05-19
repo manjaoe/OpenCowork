@@ -770,6 +770,7 @@
     "filesChanged": "{{count}} files changed",
     "showFileList": "Show {{count}} changed files",
     "hideFileList": "Hide file list",
+    "reviewButton": "Review",
     "openReview": "Review changes",
     "reviewPanelTitle": "Change review",
     "reviewPanelDescription": "Review the changed files from this run, switch between them, and confirm or undo each change.",

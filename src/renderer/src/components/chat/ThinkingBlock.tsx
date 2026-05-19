@@ -33,7 +33,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   isStreaming = false,
   startedAt,
   completedAt
-}: ThinkingBlockProps): React.JSX.Element {
+}: ThinkingBlockProps): React.JSX.Element | null {
   const { t, i18n } = useTranslation('chat')
   const liveOutputAnimationStyle = useSettingsStore((s) => s.liveOutputAnimationStyle)
   const isThinking = isStreaming && !completedAt
@@ -61,6 +61,10 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     if (!isThinking || !hasThinkingContent || !contentRef.current) return
     contentRef.current.scrollTop = contentRef.current.scrollHeight
   }, [hasThinkingContent, isThinking, renderPool.text])
+
+  if (!isThinking && !hasThinkingContent) {
+    return null
+  }
 
   const expanded = isThinking || (hasThinkingContent && !collapsed)
 

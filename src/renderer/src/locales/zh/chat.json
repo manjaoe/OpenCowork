@@ -770,6 +770,7 @@
     "filesChanged": "{{count}} 个文件已更改",
     "showFileList": "显示 {{count}} 个变更文件",
     "hideFileList": "收起文件列表",
+    "reviewButton": "审核",
     "openReview": "查看更改",
     "reviewPanelTitle": "更改审查",
     "reviewPanelDescription": "右侧查看本次运行涉及的文件列表，左侧切换文件，逐个确认或撤回改动。",

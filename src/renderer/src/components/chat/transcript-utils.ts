@@ -31,6 +31,7 @@ export interface TailToolExecutionState {
 const messageLookupCache = new WeakMap<UnifiedMessage[], Map<string, UnifiedMessage>>()
 const transcriptStaticAnalysisCache = new WeakMap<UnifiedMessage[], TranscriptStaticAnalysis>()
 const HIDDEN_MESSAGE_LIST_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate'])
+const THINK_OPEN_TAG_RE = /<\s*think\s*>/i
 
 // --- Signature-based fast cache for transcriptStaticAnalysis ---
 // The WeakMap above is keyed by array reference, which misses on every Immer state update.
@@ -113,14 +114,47 @@ function hasVisibleAssistantBlock(block: ContentBlock): boolean {
     return block.text.trim().length > 0
   }
 
+  if (block.type === 'thinking') {
+    return block.thinking.trim().length > 0
+  }
+
   return true
+}
+
+function hasVisibleAssistantStringContent(content: string): boolean {
+  if (!THINK_OPEN_TAG_RE.test(content)) {
+    return content.trim().length > 0
+  }
+
+  const textWithoutThinking = content
+    .replace(/<\s*think\s*>[\s\S]*?(<\s*\/\s*think\s*>|$)/gi, '')
+    .replace(/<\s*\/?\s*think\s*>/gi, '')
+    .trim()
+  if (textWithoutThinking.length > 0) return true
+
+  const thinkBlocks = content.matchAll(/<\s*think\s*>([\s\S]*?)(<\s*\/\s*think\s*>|$)/gi)
+  for (const match of thinkBlocks) {
+    if ((match[1] ?? '').replace(/<\s*\/?\s*think\s*>/gi, '').trim().length > 0) {
+      return true
+    }
+  }
+
+  return false
 }
 
 function shouldRenderInMessageList(message: UnifiedMessage): boolean {
   if (message.role === 'system') return isCompactBoundaryMessage(message)
   if (isToolResultOnlyUserMessage(message)) return false
-  if (message.role !== 'assistant' || !Array.isArray(message.content)) return true
+  if (message.role !== 'assistant') return true
+  if (typeof message.content === 'string') {
+    return hasVisibleAssistantStringContent(message.content)
+  }
+  if (!Array.isArray(message.content)) return true
   return message.content.some(hasVisibleAssistantBlock)
+}
+
+function isTransparentSystemMessage(message: UnifiedMessage): boolean {
+  return message.role === 'system' && !isCompactBoundaryMessage(message)
 }
 
 function collectToolResults(
@@ -166,10 +200,17 @@ function buildTailToolExecutionState(messages: UnifiedMessage[]): TailToolExecut
 
   while (assistantIndex >= 0) {
     const message = messages[assistantIndex]
-    if (!isToolResultOnlyUserMessage(message)) break
-    collectToolResults(message.content as ContentBlock[], toolResultMap)
-    trailingToolResultMessageCount += 1
-    assistantIndex -= 1
+    if (isToolResultOnlyUserMessage(message)) {
+      collectToolResults(message.content as ContentBlock[], toolResultMap)
+      trailingToolResultMessageCount += 1
+      assistantIndex -= 1
+      continue
+    }
+    if (isTransparentSystemMessage(message)) {
+      assistantIndex -= 1
+      continue
+    }
+    break
   }
 
   if (assistantIndex < 0) return null
@@ -305,6 +346,9 @@ export function buildTranscriptStaticAnalysis(
     } else if (isToolResultOnlyUserMessage(message) && currentAssistantMessageId) {
       const bucket = assistantContributors.get(currentAssistantMessageId)
       if (bucket) bucket.contributors.push(message)
+    } else if (isTransparentSystemMessage(message)) {
+      // Hidden system reminders are metadata injected into the transcript. They should
+      // not sever the assistant tool_use -> user tool_result association used by cards.
     } else {
       currentAssistantMessageId = null
     }
@@ -393,6 +437,10 @@ export function getToolResultsLookup(
         next.set(currentAssistantMessageId, results)
       }
       collectToolResults(message.content as ContentBlock[], results)
+      continue
+    }
+
+    if (isTransparentSystemMessage(message)) {
       continue
     }
 
