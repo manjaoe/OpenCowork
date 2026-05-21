@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.98] - 2026-05-21
+
+### Added
+
+- Added a Gemini 3.5 Flash preset to the RoutiN AI provider list.
+
+### Changed
+
+- Refreshed the tool catalog lifecycle so skills and sub-agents reload from IPC before requests and stay aligned after edits.
+- Improved OpenAI chat streaming so tool-call snapshots from either delta or message payloads keep tool-start and tool-delta events consistent.
+- Added streaming image-generation support with partial previews for OpenAI image flows and draw page preview state.
+- Polished chat tool cards and draw UI so skill calls, file changes, and image previews render more clearly.
+
+### Fixed
+
+- Fixed image-generation partial counts and media type handling so streamed previews and final images stay normalized.
+
 ## [0.9.97] - 2026-05-19
 
 ### Changed
