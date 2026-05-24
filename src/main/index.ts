@@ -20,9 +20,9 @@ import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
 
 // Delay import of @electron-toolkit/utils to avoid accessing app before ready
-let electronApp: any
-let optimizer: any
-let is: any
+let electronApp: { setAppUserModelId: (id: string) => void }
+let optimizer: { watchWindowShortcuts: (window: BrowserWindow) => void }
+let is: { dev: boolean }
 
 import icon from '../../resources/icon.png?asset'
 import icon_mac from '../../resources/icon-mac.png?asset'
@@ -43,6 +43,7 @@ import { registerCommandsHandlers } from './ipc/commands-handlers'
 import { registerProcessManagerHandlers, killAllManagedProcesses } from './ipc/process-manager'
 import { registerTerminalHandlers, killAllTerminalSessions } from './ipc/terminal-handlers'
 import { registerDbHandlers } from './ipc/db-handlers'
+import { registerMemoryAutomationHandlers } from './ipc/memory-automation-handlers'
 import { registerConfigHandlers } from './ipc/secure-key-store'
 import { registerChannelHandlers, autoStartChannels } from './ipc/channel-handlers'
 import { ChannelManager } from './channels/channel-manager'
@@ -721,7 +722,7 @@ async function openDetachedSessionWindow(
   }
 }
 
-function getTrayIcon() {
+function getTrayIcon(): ReturnType<typeof nativeImage.createFromPath> {
   if (process.platform === 'darwin') {
     const image = nativeImage.createFromPath(icon_mac)
     const resized = image.resize({ width: 18, height: 18 })
@@ -1037,7 +1038,7 @@ if (gotSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     // Import @electron-toolkit/utils after app is ready
-    const utils = require('@electron-toolkit/utils')
+    const utils = await import('@electron-toolkit/utils')
     electronApp = utils.electronApp
     optimizer = utils.optimizer
     is = utils.is
@@ -1102,6 +1103,7 @@ if (gotSingleInstanceLock) {
         closeDetachedSessionWindow(sessionId)
       }
     })
+    registerMemoryAutomationHandlers()
     registerConfigHandlers()
     registerSshHandlers()
     registerChannelHandlers(channelManager)

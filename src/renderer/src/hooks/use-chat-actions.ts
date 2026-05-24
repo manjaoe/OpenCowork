@@ -145,6 +145,10 @@ import {
   loadLayeredMemorySnapshot,
   type SessionMemoryScope
 } from '@renderer/lib/agent/memory-files'
+import {
+  installMemoryAutomationDailyRollup,
+  runMemoryAutomationForSession
+} from '@renderer/lib/agent/memory-automation'
 import { IMAGE_GENERATE_TOOL_NAME } from '@renderer/lib/app-plugin/types'
 import {
   isDesktopControlToolName,
@@ -3516,6 +3520,17 @@ export function useChatActions(): {
             agentStore.setSessionStatus(sessionId, 'completed')
             sessionAbortControllers.delete(sessionId)
             sessionSidecarRunIds.delete(sessionId)
+            if (sessionScope === 'main' && !abortController.signal.aborted) {
+              void runMemoryAutomationForSession({
+                sessionId,
+                assistantMessageId: assistantMsgId,
+                memorySnapshot,
+                source,
+                aborted: abortController.signal.aborted
+              }).catch((error) => {
+                console.warn('[MemoryAutomation] Session run failed:', error)
+              })
+            }
             if (!isSessionForeground(sessionId)) {
               const sessionTitle =
                 useChatStore.getState().sessions.find((item) => item.id === sessionId)?.title ??
@@ -5288,6 +5303,18 @@ export function useChatActions(): {
                 void sendMessage('', undefined, 'continue', sessionId, null, assistantMsgId)
               })
             } else {
+              if (sessionScope === 'main' && !abortController.signal.aborted) {
+                void runMemoryAutomationForSession({
+                  sessionId,
+                  assistantMessageId: assistantMsgId,
+                  memorySnapshot,
+                  source,
+                  aborted: abortController.signal.aborted
+                }).catch((error) => {
+                  console.warn('[MemoryAutomation] Session run failed:', error)
+                })
+              }
+
               if (!isSessionForeground(sessionId)) {
                 const sessionTitle =
                   useChatStore.getState().sessions.find((session) => session.id === sessionId)
@@ -5319,6 +5346,7 @@ export function useChatActions(): {
   )
 
   useEffect(() => {
+    installMemoryAutomationDailyRollup()
     ensureTeamLeadListener()
     if (useTeamStore.getState().activeTeam) {
       scheduleDrain()

@@ -38,6 +38,8 @@ export interface LayeredMemorySnapshot {
   projectUser?: MemoryLayerEntry
   globalMemory?: MemoryLayerEntry
   projectMemory?: MemoryLayerEntry
+  globalMemorySummary?: MemoryLayerEntry
+  projectMemorySummary?: MemoryLayerEntry
   globalDailyMemory: DailyMemoryEntry[]
   projectDailyMemory: DailyMemoryEntry[]
   version: number
@@ -406,6 +408,9 @@ async function buildLayeredMemorySnapshot(
   const globalSoulPath = globalHomePath ? joinFsPath(globalHomePath, 'SOUL.md') : undefined
   const globalUserPath = globalHomePath ? joinFsPath(globalHomePath, 'USER.md') : undefined
   const globalMemoryPath = globalHomePath ? joinFsPath(globalHomePath, 'MEMORY.md') : undefined
+  const globalMemorySummaryPath = globalHomePath
+    ? joinFsPath(globalHomePath, 'memory_summary.md')
+    : undefined
 
   const [
     projectAgentsFile,
@@ -415,6 +420,8 @@ async function buildLayeredMemorySnapshot(
     projectUserFile,
     globalMemoryContent,
     projectMemoryFile,
+    globalMemorySummaryContent,
+    projectMemorySummaryFile,
     globalDailyMemory,
     projectDailyMemory
   ] = await Promise.all([
@@ -459,6 +466,17 @@ async function buildLayeredMemorySnapshot(
           'MEMORY.md'
         )
       : Promise.resolve(undefined),
+    scope === 'main' && globalMemorySummaryPath
+      ? loadOptionalMemoryFile(ipc, globalMemorySummaryPath)
+      : Promise.resolve(undefined),
+    scope === 'main' && projectRootPath
+      ? resolveProjectMemoryTextFileForTarget(
+          ipc,
+          projectRootPath,
+          projectSshConnectionId,
+          'memory_summary.md'
+        )
+      : Promise.resolve(undefined),
     scope === 'main' ? loadDailyMemoryEntries(ipc, globalHomePath) : Promise.resolve([]),
     scope === 'main'
       ? loadProjectDailyMemoryEntries(ipc, projectRootPath, projectSshConnectionId)
@@ -488,6 +506,13 @@ async function buildLayeredMemorySnapshot(
     projectMemory:
       projectMemoryFile && !projectMemoryFile.error
         ? toOptionalEntry(projectMemoryFile.path, projectMemoryFile.content)
+        : undefined,
+    globalMemorySummary: globalMemorySummaryPath
+      ? toOptionalEntry(globalMemorySummaryPath, globalMemorySummaryContent)
+      : undefined,
+    projectMemorySummary:
+      projectMemorySummaryFile && !projectMemorySummaryFile.error
+        ? toOptionalEntry(projectMemorySummaryFile.path, projectMemorySummaryFile.content)
         : undefined,
     globalDailyMemory,
     projectDailyMemory,

@@ -73,6 +73,7 @@ import { MigrationPanel } from './MigrationPanel'
 import { GlobalThemePanel } from './GlobalThemePanel'
 import { AnalyticsOverview } from './AnalyticsOverview'
 import { ModelIcon, ProviderIcon } from './provider-icons'
+import { AutoMemoryPanel } from '@renderer/components/memory/AutoMemoryPanel'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import {
@@ -1665,6 +1666,8 @@ function MemoryPanel(): React.JSX.Element {
         </div>
         <p className="text-xs text-muted-foreground">{t('memory.effectiveHint')}</p>
       </section>
+
+      <AutoMemoryPanel variant="global" />
 
       <section className="space-y-4">
         <div className="flex flex-wrap gap-2">

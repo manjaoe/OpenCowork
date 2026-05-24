@@ -660,6 +660,49 @@
     "actionsLabel": "Quick access",
     "noWorkingFolder": "No working folder configured"
   },
+  "projectArchive": {
+    "noChannelSummary": "View project collaboration channels and connection status.",
+    "loadFailed": "Failed to load project archive",
+    "saved": "Project archive saved",
+    "saveFailed": "Failed to save project archive",
+    "noProjectTitle": "No project selected",
+    "noProjectDesc": "Return to home page to select a project first, then view the project archive.",
+    "backHome": "Return to home",
+    "backProject": "Return to project home",
+    "loading": "Loading project archive...",
+    "unsavedState": "Unsaved changes",
+    "savedState": "Content synced",
+    "pathUnavailable": "Path unavailable",
+    "reloadAction": "Reload",
+    "effectiveHint": "Prefers .agents in the working directory; if old files still exist at the working directory root, they will also be read and written back compatibly.",
+    "memoryRootTitle": "Project Memory Root",
+    "lastSavedAt": "Saved at {{time}}",
+    "upToDate": "Up to date",
+    "missingFileHint": "{{file}} does not exist yet. Initial template loaded, click Save to create the file.",
+    "legacyLocationHint": "Current file is from an old location in the working directory root, save will continue writing back to the original location.",
+    "placeholder": "Edit {{file}} here ...",
+    "savingAction": "Saving...",
+    "resetAction": "Reset",
+    "errorLabel": "Error: ",
+    "files": {
+      "agents": {
+        "description": "Project-level work agreements, boundaries, and collaboration guidelines."
+      },
+      "soul": {
+        "description": "Project-specific personality/style supplement, takes priority over global SOUL.md."
+      },
+      "user": {
+        "description": "Your preferences, goals, and collaboration style for this project."
+      },
+      "memory": {
+        "description": "Long-term memory, decisions, and context for this project."
+      },
+      "daily": {
+        "title": "Daily Memory",
+        "description": "Record today's project temporary context, can be organized into MEMORY.md later."
+      }
+    }
+  },
   "skills": {
     "addActions": "Add actions",
     "addToChat": "Add to Chat",
@@ -838,6 +881,11 @@
     "restored": "This file has been restored.",
     "rollbackConflictDefault": "This file has a rollback conflict.",
     "individualActions": "You can keep or revert this file individually.",
+    "undoFileConfirmTitle": "Undo this file change?",
+    "undoFileConfirmDesc": "This will revert the recorded change to \"{{path}}\". This action cannot be undone.",
+    "undoRunConfirmTitle": "Undo code changes?",
+    "undoRunConfirmDesc": "This will revert {{count}} pending code change(s). This action cannot be undone.",
+    "undoConfirmAction": "Undo",
     "moreFiles": "+{{count}} more",
     "bulkActionsHint": "You can handle files one by one below, or apply bulk actions here.",
     "conflictedHint": "Some files changed after the agent finished, so only safe files were reverted.",

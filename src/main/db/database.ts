@@ -348,6 +348,156 @@ export function getDb(): Database.Database {
       ON agent_file_changes(tool_use_id);
   `)
 
+  // --- Memory automation audit log ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory_automation_entries (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL,
+      root_scope TEXT,
+      memory_root_id TEXT,
+      job_id TEXT,
+      project_id TEXT,
+      target TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      content TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0,
+      source_session_id TEXT,
+      target_path TEXT,
+      status TEXT NOT NULL,
+      filter_reason TEXT,
+      fingerprint TEXT NOT NULL,
+      evidence_json TEXT,
+      written_at INTEGER,
+      error TEXT,
+      before_content TEXT,
+      after_content TEXT,
+      appended_text TEXT,
+      ssh_connection_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      undone_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_automation_created
+      ON memory_automation_entries(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_automation_target
+      ON memory_automation_entries(target, target_path, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_automation_fingerprint
+      ON memory_automation_entries(fingerprint, target, target_path, status);
+    CREATE INDEX IF NOT EXISTS idx_memory_automation_session
+      ON memory_automation_entries(source_session_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_automation_root
+      ON memory_automation_entries(memory_root_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS memory_automation_rollups (
+      scope TEXT NOT NULL,
+      target TEXT NOT NULL,
+      target_path TEXT NOT NULL,
+      source_date TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      processed_at INTEGER NOT NULL,
+      PRIMARY KEY (scope, target_path, source_date, content_hash)
+    );
+
+    CREATE TABLE IF NOT EXISTS memory_roots (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL CHECK(scope IN ('global', 'project')),
+      project_id TEXT,
+      working_folder TEXT,
+      ssh_connection_id TEXT,
+      root_path TEXT NOT NULL,
+      transport TEXT NOT NULL CHECK(transport IN ('local', 'ssh')),
+      owner_key TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_roots_scope
+      ON memory_roots(scope, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_roots_project
+      ON memory_roots(project_id, working_folder, ssh_connection_id);
+
+    CREATE TABLE IF NOT EXISTS memory_stage1_outputs (
+      id TEXT PRIMARY KEY,
+      memory_root_id TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('global', 'project')),
+      source_session_id TEXT NOT NULL,
+      source_updated_at INTEGER,
+      raw_memory TEXT NOT NULL,
+      rollout_summary TEXT NOT NULL,
+      rollout_slug TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      usage_count INTEGER NOT NULL DEFAULT 0,
+      last_usage_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (memory_root_id) REFERENCES memory_roots(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_stage1_unique
+      ON memory_stage1_outputs(memory_root_id, source_session_id, fingerprint);
+    CREATE INDEX IF NOT EXISTS idx_memory_stage1_root_created
+      ON memory_stage1_outputs(memory_root_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_stage1_session
+      ON memory_stage1_outputs(source_session_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS memory_jobs (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      memory_root_id TEXT,
+      source_session_id TEXT,
+      lease_owner TEXT,
+      lease_expires_at INTEGER,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      error TEXT,
+      started_at INTEGER,
+      finished_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (memory_root_id) REFERENCES memory_roots(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_jobs_status
+      ON memory_jobs(status, kind, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_jobs_root
+      ON memory_jobs(memory_root_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_jobs_session
+      ON memory_jobs(source_session_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS memory_citation_usage (
+      id TEXT PRIMARY KEY,
+      memory_root_id TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('global', 'project')),
+      source_session_id TEXT,
+      path TEXT NOT NULL,
+      line INTEGER,
+      citation_json TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (memory_root_id) REFERENCES memory_roots(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_citation_usage_root
+      ON memory_citation_usage(memory_root_id, created_at DESC);
+  `)
+
+  const memoryAutomationColumns = [
+    { name: 'root_scope', type: 'TEXT' },
+    { name: 'memory_root_id', type: 'TEXT' },
+    { name: 'job_id', type: 'TEXT' },
+    { name: 'project_id', type: 'TEXT' },
+    { name: 'filter_reason', type: 'TEXT' },
+    { name: 'before_content', type: 'TEXT' },
+    { name: 'after_content', type: 'TEXT' },
+    { name: 'appended_text', type: 'TEXT' },
+    { name: 'ssh_connection_id', type: 'TEXT' },
+    { name: 'undone_at', type: 'INTEGER' }
+  ] as const
+  for (const column of memoryAutomationColumns) {
+    ensureColumn(db, 'memory_automation_entries', column.name, column.type)
+  }
+
   // --- Session Goals table ---
   db.exec(`
     CREATE TABLE IF NOT EXISTS session_goals (

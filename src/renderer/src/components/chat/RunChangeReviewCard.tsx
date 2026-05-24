@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ChevronDown, ChevronUp, ExternalLink, Loader2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { MONO_FONT } from '@renderer/lib/constants'
 import type { AgentRunChangeSet } from '@renderer/stores/agent-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
@@ -207,6 +208,13 @@ export function RunChangeReviewCard({
   }
 
   const handleUndo = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: t('fileChange.undoRunConfirmTitle'),
+      description: t('fileChange.undoRunConfirmDesc', { count: pendingCount }),
+      confirmLabel: t('fileChange.undoConfirmAction'),
+      variant: 'destructive'
+    })
+    if (!confirmed) return
     setIsUndoing(true)
     try {
       await undoRunChanges(runId)

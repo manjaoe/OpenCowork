@@ -7,7 +7,14 @@ import { buildMemoryContext } from './agent/dynamic-context'
 import type { LayeredMemorySnapshot, SessionMemoryScope } from './agent/memory-files'
 import type { PromptEnvironmentContext } from './agent/system-prompt'
 
-const CHAT_MODE_CORE_TOOL_NAMES = new Set(['WebSearch', 'WebFetch', 'visualize_show_widget'])
+const CHAT_MODE_CORE_TOOL_NAMES = new Set([
+  'WebSearch',
+  'WebFetch',
+  'visualize_show_widget',
+  'MemoryList',
+  'MemoryRead',
+  'MemorySearch'
+])
 const CHAT_MODE_PLUGIN_TOOL_NAMES = new Set([
   ...APP_PLUGIN_DESCRIPTORS.flatMap((descriptor) => descriptor.toolNames),
   ...PLUGIN_TOOL_DEFINITIONS.map((tool) => tool.name)

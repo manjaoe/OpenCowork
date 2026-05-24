@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ChevronDown, ChevronUp, FileCode, Loader2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { MONO_FONT } from '@renderer/lib/constants'
 import { useAgentStore, type AgentRunChangeSet } from '@renderer/stores/agent-store'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -137,6 +138,13 @@ export function SessionChangeSummaryCard({
 
   const handleUndoAll = async (): Promise<void> => {
     if (undoableRunIds.length === 0) return
+    const confirmed = await confirm({
+      title: t('fileChange.undoRunConfirmTitle'),
+      description: t('fileChange.undoRunConfirmDesc', { count: undoableRunIds.length }),
+      confirmLabel: t('fileChange.undoConfirmAction'),
+      variant: 'destructive'
+    })
+    if (!confirmed) return
     setIsUndoing(true)
     try {
       for (const runId of undoableRunIds) {
@@ -153,6 +161,16 @@ export function SessionChangeSummaryCard({
     const lastSource = change.sourceChanges[change.sourceChanges.length - 1]
     const undoTargetRunId = lastSource?.runId ?? change.runId
     const undoTargetChangeId = lastSource?.id ?? change.lastChangeId
+    const handleUndoFile = async (): Promise<void> => {
+      const confirmed = await confirm({
+        title: t('fileChange.undoFileConfirmTitle'),
+        description: t('fileChange.undoFileConfirmDesc', { path: change.filePath }),
+        confirmLabel: t('fileChange.undoConfirmAction'),
+        variant: 'destructive'
+      })
+      if (!confirmed) return
+      await undoFileChange(undoTargetRunId, undoTargetChangeId)
+    }
 
     return (
       <div
@@ -186,7 +204,7 @@ export function SessionChangeSummaryCard({
           <button
             type="button"
             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
-            onClick={() => void undoFileChange(undoTargetRunId, undoTargetChangeId)}
+            onClick={() => void handleUndoFile()}
             disabled={isUndoing}
             title={t('action.undo', { ns: 'common' })}
             aria-label={t('action.undo', { ns: 'common' })}

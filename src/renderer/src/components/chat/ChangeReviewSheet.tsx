@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronDown, Copy, FileCode, Loader2, RotateCcw, X } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { Sheet, SheetContent } from '@renderer/components/ui/sheet'
 import { MONO_FONT } from '@renderer/lib/constants'
 import { cn } from '@renderer/lib/utils'
@@ -284,6 +285,13 @@ function ChangeRow({
 
   const handleUndo = async (): Promise<void> => {
     if (!actionable) return
+    const confirmed = await confirm({
+      title: t('fileChange.undoFileConfirmTitle'),
+      description: t('fileChange.undoFileConfirmDesc', { path: change.filePath }),
+      confirmLabel: t('fileChange.undoConfirmAction'),
+      variant: 'destructive'
+    })
+    if (!confirmed) return
     setIsUndoing(true)
     try {
       for (const entry of [...actionableChanges].reverse()) {
@@ -465,6 +473,13 @@ export function ChangeReviewPanelContent({
   const actionable = pendingCount > 0
 
   const handleUndoAll = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: t('fileChange.undoRunConfirmTitle'),
+      description: t('fileChange.undoRunConfirmDesc', { count: pendingCount }),
+      confirmLabel: t('fileChange.undoConfirmAction'),
+      variant: 'destructive'
+    })
+    if (!confirmed) return
     setIsUndoingAll(true)
     try {
       await undoRunChanges(runId)

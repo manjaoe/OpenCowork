@@ -24,6 +24,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { AnimatePresence, motion } from 'motion/react'
 import { Button } from '@renderer/components/ui/button'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { type DiffViewerChunk, type DiffViewerLine } from './CodeDiffViewer'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -1333,6 +1334,13 @@ export function FileChangeCard({
 
   const handleUndoFile = async (): Promise<void> => {
     if (!trackedChange || !isFileActionable) return
+    const confirmed = await confirm({
+      title: t('fileChange.undoFileConfirmTitle'),
+      description: t('fileChange.undoFileConfirmDesc', { path: filePath }),
+      confirmLabel: t('fileChange.undoConfirmAction'),
+      variant: 'destructive'
+    })
+    if (!confirmed) return
     setIsUndoingFile(true)
     try {
       await undoFileChange(trackedChange.runId, trackedChange.id)
