@@ -696,6 +696,7 @@ export function ModelSwitcher({
   const isFastRoute = modelRoute === 'fast'
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const autoModelRef = useRef<HTMLButtonElement>(null)
@@ -733,7 +734,10 @@ export function ModelSwitcher({
     ? (autoModelRoutingStatesBySession[activeSessionId] ?? 'idle')
     : 'idle'
 
-  const enabledProviders = providers.filter((p) => isProviderAvailableForModelSelection(p))
+  const enabledProviders = useMemo(
+    () => providers.filter((p) => isProviderAvailableForModelSelection(p)),
+    [providers]
+  )
   const activeSession = sessions.find((item) => item.id === activeSessionId)
   const sessionProviderId = activeSession?.providerId ?? null
   const sessionModelId = activeSession?.modelId ?? null
@@ -845,6 +849,23 @@ export function ModelSwitcher({
       })
       .filter((g) => g.models.length > 0)
   }, [enabledProviders, isFastRoute, search])
+  const selectedGroup = useMemo(
+    () =>
+      (selectedProviderId
+        ? groups.find((group) => group.provider.id === selectedProviderId)
+        : null) ??
+      (displayProviderId
+        ? groups.find((group) => group.provider.id === displayProviderId)
+        : null) ??
+      groups[0] ??
+      null,
+    [displayProviderId, groups, selectedProviderId]
+  )
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (nextOpen) setSelectedProviderId(null)
+  }, [])
 
   useEffect(() => {
     if (!open) {
@@ -861,10 +882,10 @@ export function ModelSwitcher({
   }, [open])
 
   useEffect(() => {
-    if (!open || search.trim() || hasAutoScrolledToSelectionRef.current) return
+    if (!open || isAutoModeActive || search.trim() || hasAutoScrolledToSelectionRef.current) return
 
     const timer = setTimeout(() => {
-      const target = isAutoModeActive ? autoModelRef.current : activeModelRef.current
+      const target = activeModelRef.current
       const container = listRef.current
       if (!target || !container) return
 
@@ -881,12 +902,12 @@ export function ModelSwitcher({
     }, 0)
 
     return () => clearTimeout(timer)
-  }, [open, search, groups, isAutoModeActive])
+  }, [open, search, selectedGroup, isAutoModeActive])
 
   return (
     <div className="inline-flex h-8 items-center rounded-lg border border-transparent hover:border-border/50 hover:bg-muted/30 transition-colors">
       {/* Model icon trigger — opens model list */}
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button
             className="inline-flex h-8 min-w-0 items-center gap-2 rounded-l-lg px-2.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
@@ -924,7 +945,11 @@ export function ModelSwitcher({
             </span>
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-80 p-0 overflow-hidden" align="start" sideOffset={8}>
+        <PopoverContent
+          className="w-[560px] max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+          align="start"
+          sideOffset={8}
+        >
           <div className="flex items-center gap-2 border-b px-3 py-2">
             <Search className="size-3.5 text-muted-foreground/60 shrink-0" />
             <input
@@ -936,12 +961,12 @@ export function ModelSwitcher({
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div ref={listRef} className="max-h-[360px] overflow-y-auto p-1">
-            {!isFastRoute && (
+          {!isFastRoute && (
+            <div className="border-b p-1">
               <button
                 ref={autoModelRef}
                 className={cn(
-                  'mb-2 flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
+                  'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
                   isAutoModeActive && 'bg-primary/5'
                 )}
                 onClick={() => selectAutoModel(setOpen)}
@@ -966,7 +991,7 @@ export function ModelSwitcher({
                   >
                     {t('topbar.autoModel')}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="line-clamp-2 text-[10px] text-muted-foreground">
                     {autoRoutingState === 'routing'
                       ? t('topbar.autoModelRouting')
                       : autoSelection?.modelName
@@ -991,84 +1016,134 @@ export function ModelSwitcher({
                   </span>
                 </div>
               </button>
-            )}
-            {groups.length === 0 ? (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground/50">
-                {enabledProviders.length === 0 ? t('topbar.noProviders') : t('topbar.noModels')}
+            </div>
+          )}
+          <div className="grid max-h-[360px] grid-cols-[180px_minmax(0,1fr)]">
+            <div className="min-h-0 border-r bg-muted/20 p-1">
+              <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                {t('topbar.providers')}
               </div>
-            ) : (
-              groups.map(({ provider, models }) => (
-                <div key={provider.id} className="mb-1 last:mb-0">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10px] text-muted-foreground/50 uppercase tracking-wider font-medium">
-                    <ProviderIcon builtinId={provider.builtinId} size={14} />
-                    {provider.name}
+              <div className="max-h-[328px] overflow-y-auto">
+                {groups.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-muted-foreground/50">
+                    {enabledProviders.length === 0 ? t('topbar.noProviders') : t('topbar.noModels')}
                   </div>
-                  {models.map((m) => {
-                    const isActive =
-                      !isAutoModeActive &&
-                      provider.id === displayProviderId &&
-                      m.id === displayModelId
+                ) : (
+                  groups.map(({ provider, models }) => {
+                    const isSelected = provider.id === selectedGroup?.provider.id
+                    const isDisplayProvider = provider.id === displayProviderId && !isAutoModeActive
                     return (
                       <button
-                        key={`${provider.id}-${m.id}`}
-                        ref={isActive ? activeModelRef : undefined}
+                        key={provider.id}
+                        type="button"
                         className={cn(
-                          'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
-                          isActive && 'bg-primary/5'
+                          'flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/70',
+                          isSelected && 'bg-background shadow-sm',
+                          isDisplayProvider && !isSelected && 'text-primary'
                         )}
-                        onClick={() =>
-                          isFastRoute
-                            ? selectFastModel(
-                                provider,
-                                m.id,
-                                activeFastProviderId,
-                                setActiveFastProvider,
-                                setActiveFastModel,
-                                setOpen
-                              )
-                            : selectModel(
-                                provider,
-                                m.id,
-                                activeProviderId,
-                                setActiveProvider,
-                                setActiveModel,
-                                setOpen
-                              )
-                        }
+                        onClick={() => setSelectedProviderId(provider.id)}
                       >
-                        <span className="mt-0.5 shrink-0">
-                          {isActive ? (
-                            <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
-                              <Check className="size-3 text-primary" />
-                            </span>
-                          ) : (
-                            <ModelIcon
-                              icon={m.icon}
-                              modelId={m.id}
-                              providerBuiltinId={provider.builtinId}
-                              size={20}
-                            />
-                          )}
+                        <ProviderIcon builtinId={provider.builtinId} size={16} />
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                          {provider.name}
                         </span>
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span
-                            className={cn(
-                              'truncate text-xs',
-                              isActive
-                                ? 'font-semibold text-primary'
-                                : 'text-foreground/80 group-hover:text-foreground'
-                            )}
-                          >
-                            {m.name || m.id.replace(/-\d{8}$/, '')}
-                          </span>
-                          <ModelCapabilityTags model={m} providerType={provider.type} t={t} />
-                        </div>
+                        <span
+                          className={cn(
+                            'rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground',
+                            isDisplayProvider && 'bg-primary/10 text-primary'
+                          )}
+                        >
+                          {models.length}
+                        </span>
                       </button>
                     )
-                  })}
+                  })
+                )}
+              </div>
+            </div>
+            <div ref={listRef} className="min-h-0 max-h-[360px] overflow-y-auto p-1">
+              {selectedGroup && (
+                <div className="sticky top-0 z-10 mb-1 flex items-center gap-2 border-b bg-popover/95 px-2 py-1.5 backdrop-blur">
+                  <ProviderIcon builtinId={selectedGroup.provider.builtinId} size={14} />
+                  <span className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                    {selectedGroup.provider.name}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground/50">
+                    {t('topbar.modelsCount', { count: selectedGroup.models.length })}
+                  </span>
                 </div>
-              ))
-            )}
+              )}
+              {!selectedGroup ? (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground/50">
+                  {enabledProviders.length === 0 ? t('topbar.noProviders') : t('topbar.noModels')}
+                </div>
+              ) : (
+                selectedGroup.models.map((m) => {
+                  const provider = selectedGroup.provider
+                  const isActive =
+                    !isAutoModeActive &&
+                    provider.id === displayProviderId &&
+                    m.id === displayModelId
+                  return (
+                    <button
+                      key={`${provider.id}-${m.id}`}
+                      ref={isActive ? activeModelRef : undefined}
+                      className={cn(
+                        'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
+                        isActive && 'bg-primary/5'
+                      )}
+                      onClick={() =>
+                        isFastRoute
+                          ? selectFastModel(
+                              provider,
+                              m.id,
+                              activeFastProviderId,
+                              setActiveFastProvider,
+                              setActiveFastModel,
+                              setOpen
+                            )
+                          : selectModel(
+                              provider,
+                              m.id,
+                              activeProviderId,
+                              setActiveProvider,
+                              setActiveModel,
+                              setOpen
+                            )
+                      }
+                    >
+                      <span className="mt-0.5 shrink-0">
+                        {isActive ? (
+                          <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
+                            <Check className="size-3 text-primary" />
+                          </span>
+                        ) : (
+                          <ModelIcon
+                            icon={m.icon}
+                            modelId={m.id}
+                            providerBuiltinId={provider.builtinId}
+                            size={20}
+                          />
+                        )}
+                      </span>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span
+                          className={cn(
+                            'truncate text-xs',
+                            isActive
+                              ? 'font-semibold text-primary'
+                              : 'text-foreground/80 group-hover:text-foreground'
+                          )}
+                        >
+                          {m.name || m.id.replace(/-\d{8}$/, '')}
+                        </span>
+                        <ModelCapabilityTags model={m} providerType={provider.type} t={t} />
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
           </div>
         </PopoverContent>
       </Popover>

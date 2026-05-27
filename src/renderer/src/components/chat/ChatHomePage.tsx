@@ -8,6 +8,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChatActions, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
 import type { ImageAttachment } from '@renderer/lib/image-attachments'
+import { ensureDefaultChatWorkingFolder } from '@renderer/lib/chat-working-folder'
 
 function applySuggestedPrompt(prompt: string): void {
   const textarea = document.querySelector('textarea')
@@ -56,18 +57,23 @@ export function ChatHomePage(): React.JSX.Element {
 
   const handleSend = React.useCallback(
     (text: string, images?: ImageAttachment[], options?: SendMessageOptions): void => {
-      const chatStore = useChatStore.getState()
-      const sessionId =
-        mode === 'chat'
-          ? chatStore.createSession(mode, null, {
-              preserveProjectless: true
-            })
-          : chatStore.createSession(mode, activeProject?.id ?? undefined)
-      useUIStore.getState().navigateToSession(sessionId)
-      void sendMessage(text, images, undefined, sessionId, undefined, undefined, {
-        ...options,
-        clearCompletedTasksOnTurnStart: true
-      })
+      void (async () => {
+        const chatStore = useChatStore.getState()
+        const chatWorkingFolder =
+          mode === 'chat' ? await ensureDefaultChatWorkingFolder() : undefined
+        const sessionId =
+          mode === 'chat'
+            ? chatStore.createSession(mode, null, {
+                preserveProjectless: true,
+                workingFolder: chatWorkingFolder
+              })
+            : chatStore.createSession(mode, activeProject?.id ?? undefined)
+        useUIStore.getState().navigateToSession(sessionId)
+        void sendMessage(text, images, undefined, sessionId, undefined, undefined, {
+          ...options,
+          clearCompletedTasksOnTurnStart: true
+        })
+      })()
     },
     [activeProject?.id, mode, sendMessage]
   )

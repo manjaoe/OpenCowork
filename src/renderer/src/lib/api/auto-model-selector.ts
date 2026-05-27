@@ -1,8 +1,6 @@
 import { ensureProviderAuthReady } from '@renderer/lib/auth/provider-auth'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { useMcpStore } from '@renderer/stores/mcp-store'
 import type {
   AppMode,
   AutoModelConfidence,
@@ -230,11 +228,6 @@ function getFastModelSupportsTools(): boolean {
   return model?.supportsFunctionCall !== false
 }
 
-function hasChatModeToolsAvailable(projectId?: string | null): boolean {
-  if (useSettingsStore.getState().webSearchEnabled) return true
-  return Object.keys(useMcpStore.getState().getActiveMcpTools(projectId)).length > 0
-}
-
 export function shouldAllowToolsForRequest(options: {
   latestUserInput: string
   mode?: AppMode
@@ -247,7 +240,7 @@ export function shouldAllowToolsForRequest(options: {
   if (!input) return false
 
   if (options.mode === 'chat') {
-    return hasChatModeToolsAvailable(options.projectId)
+    return true
   }
 
   const normalized = input.toLowerCase()

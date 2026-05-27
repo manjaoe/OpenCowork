@@ -631,17 +631,13 @@ export function ContextPanel(): React.JSX.Element {
                         ) : null}
                       </div>
                     )}
-                    {activeSession.messages.length >= 8 && !showCompressPanel && (
+                    {activeSession.messages.length > 0 && !showCompressPanel && (
                       <>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="mt-1 h-6 gap-1.5 px-2 text-[10px] text-muted-foreground"
-                          disabled={
-                            compressing ||
-                            !manualCompressionTrigger ||
-                            ctxUsed < manualCompressionTrigger
-                          }
+                          disabled={compressing}
                           onClick={() => setShowCompressPanel(true)}
                         >
                           <Archive className="size-3" />
@@ -659,62 +655,60 @@ export function ContextPanel(): React.JSX.Element {
                         ) : null}
                       </>
                     )}
-                    {showCompressPanel &&
-                      manualCompressionTrigger &&
-                      ctxUsed >= manualCompressionTrigger && (
-                        <div className="mt-1.5 space-y-1.5 rounded-md border p-2">
-                          <input
-                            type="text"
-                            className="w-full rounded border bg-background px-2 py-1 text-[11px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
-                            placeholder="Focus area (optional), e.g.: keep API-related changes"
-                            value={focusPrompt}
-                            onChange={(e) => setFocusPrompt(e.target.value)}
-                            disabled={compressing}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !compressing) {
-                                e.preventDefault()
-                                setCompressing(true)
-                                manualCompressContext(focusPrompt || undefined).finally(() => {
-                                  setCompressing(false)
-                                  setShowCompressPanel(false)
-                                  setFocusPrompt('')
-                                })
-                              }
-                            }}
-                          />
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="h-5 px-2 text-[10px]"
-                              disabled={compressing}
-                              onClick={() => {
-                                setCompressing(true)
-                                manualCompressContext(focusPrompt || undefined).finally(() => {
-                                  setCompressing(false)
-                                  setShowCompressPanel(false)
-                                  setFocusPrompt('')
-                                })
-                              }}
-                            >
-                              <Archive className="size-3 mr-1" />
-                              {compressing ? 'Compressing...' : 'Confirm compression'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 px-2 text-[10px] text-muted-foreground"
-                              disabled={compressing}
-                              onClick={() => {
+                    {showCompressPanel && (
+                      <div className="mt-1.5 space-y-1.5 rounded-md border p-2">
+                        <input
+                          type="text"
+                          className="w-full rounded border bg-background px-2 py-1 text-[11px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="Focus area (optional), e.g.: keep API-related changes"
+                          value={focusPrompt}
+                          onChange={(e) => setFocusPrompt(e.target.value)}
+                          disabled={compressing}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !compressing) {
+                              e.preventDefault()
+                              setCompressing(true)
+                              manualCompressContext(focusPrompt || undefined).finally(() => {
+                                setCompressing(false)
                                 setShowCompressPanel(false)
                                 setFocusPrompt('')
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
+                              })
+                            }
+                          }}
+                        />
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-5 px-2 text-[10px]"
+                            disabled={compressing}
+                            onClick={() => {
+                              setCompressing(true)
+                              manualCompressContext(focusPrompt || undefined).finally(() => {
+                                setCompressing(false)
+                                setShowCompressPanel(false)
+                                setFocusPrompt('')
+                              })
+                            }}
+                          >
+                            <Archive className="size-3 mr-1" />
+                            {compressing ? 'Compressing...' : 'Confirm compression'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 px-2 text-[10px] text-muted-foreground"
+                            disabled={compressing}
+                            onClick={() => {
+                              setShowCompressPanel(false)
+                              setFocusPrompt('')
+                            }}
+                          >
+                            Cancel
+                          </Button>
                         </div>
-                      )}
+                      </div>
+                    )}
                   </>
                 )
               })()}

@@ -186,9 +186,9 @@ export function buildChatModeSystemPrompt(options: ChatModePromptOptions): strin
     'Use markdown formatting when it improves readability. Use fenced code blocks with language identifiers for code.',
     '',
     '## Chat Mode',
-    '- Chat mode is conversation-first. Answer directly when tools are unnecessary.',
-    '- Preserve the lightweight Chat boundary: do not pretend to have Code/Cowork file-editing or shell tools unless they are actually available in the provided tool list.',
-    '- If the user asks for implementation work that requires broader tool access, explain the needed mode/tool boundary briefly and keep the response actionable.',
+    '- Chat mode is conversation-first, but it has the same tool access as other agent modes when tools are provided.',
+    '- Answer directly when tools are unnecessary; use file, shell, skill, MCP, and other tools when they help satisfy the user request.',
+    '- For actions that modify files, run commands, contact external services, or otherwise have side effects, keep the user informed and respect the app approval flow.',
     '- Treat loaded memory and project protocol as context with higher priority than ordinary conversation history, while still following this system prompt first.'
   ]
 
@@ -225,7 +225,7 @@ export function buildChatModeSystemPrompt(options: ChatModePromptOptions): strin
       '',
       '## Working Folder',
       `\`${workingFolder}\``,
-      'Resolve relative paths against this folder when discussing project files.'
+      'Resolve relative paths against this folder for file and shell work.'
     )
   }
 

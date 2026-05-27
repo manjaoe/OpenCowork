@@ -9,6 +9,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChatActions, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
 import type { ImageAttachment } from '@renderer/lib/image-attachments'
+import { ensureDefaultChatWorkingFolder } from '@renderer/lib/chat-working-folder'
 
 export function ProjectHomePage(): React.JSX.Element {
   const { t } = useTranslation('chat')
@@ -26,14 +27,24 @@ export function ProjectHomePage(): React.JSX.Element {
 
   const handleSend = React.useCallback(
     (text: string, images?: ImageAttachment[], options?: SendMessageOptions): void => {
-      if (!activeProjectId) return
-      const chatStore = useChatStore.getState()
-      const sessionId = chatStore.createSession(mode, activeProjectId)
-      useUIStore.getState().navigateToSession(sessionId)
-      void sendMessage(text, images, undefined, sessionId, undefined, undefined, {
-        ...options,
-        clearCompletedTasksOnTurnStart: true
-      })
+      void (async () => {
+        if (!activeProjectId && mode !== 'chat') return
+        const chatStore = useChatStore.getState()
+        const chatWorkingFolder =
+          mode === 'chat' ? await ensureDefaultChatWorkingFolder() : undefined
+        const sessionId =
+          mode === 'chat'
+            ? chatStore.createSession(mode, null, {
+                preserveProjectless: true,
+                workingFolder: chatWorkingFolder
+              })
+            : chatStore.createSession(mode, activeProjectId)
+        useUIStore.getState().navigateToSession(sessionId)
+        void sendMessage(text, images, undefined, sessionId, undefined, undefined, {
+          ...options,
+          clearCompletedTasksOnTurnStart: true
+        })
+      })()
     },
     [activeProjectId, mode, sendMessage]
   )

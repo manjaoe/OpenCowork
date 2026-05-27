@@ -414,6 +414,9 @@ export function registerSidecarHandlers(): void {
     const messages = Array.isArray(record.messages) ? record.messages : []
     const provider = normalizeRendererRequestRecord(record.provider)
     const focusPrompt = typeof record.focusPrompt === 'string' ? record.focusPrompt : undefined
+    const preTokensRaw = Number(record.preTokens)
+    const preTokens =
+      Number.isFinite(preTokensRaw) && preTokensRaw > 0 ? Math.floor(preTokensRaw) : 0
 
     return await compressMessagesForContext(
       messages as Parameters<typeof compressMessagesForContext>[0],
@@ -422,7 +425,7 @@ export function registerSidecarHandlers(): void {
       undefined,
       focusPrompt,
       'manual',
-      0
+      preTokens
     )
   })
 

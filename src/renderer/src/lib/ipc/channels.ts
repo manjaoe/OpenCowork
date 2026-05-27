@@ -22,6 +22,7 @@ export const IPC = {
   FS_WRITE_FILE: 'fs:write-file',
   FS_LIST_DIR: 'fs:list-dir',
   FS_MKDIR: 'fs:mkdir',
+  FS_DEFAULT_CHAT_WORKING_FOLDER: 'fs:default-chat-working-folder',
   FS_DELETE: 'fs:delete',
   FS_MOVE: 'fs:move',
   FS_SELECT_FOLDER: 'fs:select-folder',

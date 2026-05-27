@@ -177,6 +177,8 @@
       "low_confidence_main": "低置信度，保守回退主模型"
     },
     "clickToSwitch": "点击切换",
+    "providers": "提供商",
+    "modelsCount": "{{count}} 个模型",
     "noProviders": "暂无可用服务商",
     "noModels": "暂无模型",
     "customPromptActive": "自定义系统提示词已激活",

@@ -91,7 +91,6 @@ import { ApiStreamError } from '@renderer/lib/ipc/api-stream'
 import { recordUsageEvent } from '@renderer/lib/usage-analytics'
 import {
   compressMessages,
-  isCompactSummaryLikeMessage,
   mergeCompressedMessagesIntoConversation,
   resolveCompressionContextLength,
   resolveCompressionReservedOutputBudget,
@@ -164,10 +163,10 @@ import {
   buildChatModePromptContextCacheKey,
   buildChatModeSystemPrompt,
   buildSystemPromptContextCacheKey,
-  filterChatModeToolDefinitions,
   hasChatModePluginTools,
   haveSameToolDefinitions
 } from '@renderer/lib/chat-mode-tools'
+import { ensureDefaultChatWorkingFolder } from '@renderer/lib/chat-working-folder'
 import { ensureRequestToolCatalogFresh } from '@renderer/lib/tools/dynamic-tool-catalog'
 import {
   goalStatusLabel,
@@ -335,6 +334,18 @@ function resolveSessionWorkingFolder(
   if (!projectId) return undefined
   const project = useChatStore.getState().projects.find((item) => item.id === projectId)
   return project?.workingFolder?.trim() || undefined
+}
+
+async function ensureChatSessionWorkingFolder(sessionId: string): Promise<void> {
+  const chatStore = useChatStore.getState()
+  const session = chatStore.sessions.find((item) => item.id === sessionId)
+  if (!session || session.mode !== 'chat' || session.sshConnectionId) return
+  if (session.workingFolder?.trim()) return
+
+  const folder = await ensureDefaultChatWorkingFolder()
+  if (folder) {
+    chatStore.setWorkingFolder(sessionId, folder)
+  }
 }
 
 function resolveActiveMcpContext(projectId?: string | null): {
@@ -1023,6 +1034,39 @@ function estimateContextTokensForRequest(args: {
     console.warn('[ChatActions] Failed to estimate request context tokens', error)
     return 0
   }
+}
+
+function findRecentInputTokenUsage(messages: UnifiedMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const usage = messages[index]?.usage
+    if (!usage) continue
+
+    const contextTokens = usage.contextTokens
+    if (typeof contextTokens === 'number' && Number.isFinite(contextTokens) && contextTokens > 0) {
+      return Math.floor(contextTokens)
+    }
+
+    const inputTokens = usage.inputTokens
+    if (typeof inputTokens === 'number' && Number.isFinite(inputTokens) && inputTokens > 0) {
+      return Math.floor(inputTokens)
+    }
+  }
+
+  return 0
+}
+
+function estimateManualCompressionInputTokens(
+  messages: UnifiedMessage[],
+  providerConfig: ProviderConfig
+): number {
+  const reportedTokens = findRecentInputTokenUsage(messages)
+  if (reportedTokens > 0) return reportedTokens
+
+  return estimateContextTokensForRequest({
+    messages,
+    tools: [],
+    providerConfig
+  })
 }
 
 function estimateCurrentIterationContextTokens(args: {
@@ -2827,11 +2871,15 @@ export function useChatActions(): {
       // Ensure we have an active session
       let sessionId = targetSessionId ?? chatStore.activeSessionId
       if (!sessionId) {
+        const chatWorkingFolder =
+          uiStore.mode === 'chat' ? await ensureDefaultChatWorkingFolder() : undefined
         sessionId = chatStore.createSession(uiStore.mode, undefined, {
           ...options,
-          preserveProjectless: true
+          preserveProjectless: true,
+          workingFolder: chatWorkingFolder
         })
       }
+      await ensureChatSessionWorkingFolder(sessionId)
       if (source !== 'continue') {
         // Reset the back-to-back Task dedup guard on every fresh user turn —
         // the guard is only meant to block immediate retries within one loop,
@@ -3318,13 +3366,13 @@ export function useChatActions(): {
           !!sessionGoalSnapshot &&
           sessionGoalSnapshot.status !== 'paused' &&
           sessionGoalSnapshot.status !== 'complete'
-        const registeredToolDefs = toolRegistry.getDefinitions()
         const chatMcpContext =
           mode === 'chat' ? resolveActiveMcpContext(session?.projectId ?? null) : null
+        const registeredToolDefs = toolRegistry.getDefinitions()
         const baseChatModeToolDefs =
           mode === 'chat' &&
           !(providerResolution.modelConfig?.category === 'image' && source !== 'continue')
-            ? filterChatModeToolDefinitions(registeredToolDefs)
+            ? registeredToolDefs
             : []
         const chatModeToolDefs = baseChatModeToolDefs
         const sessionScope: SessionMemoryScope = session?.pluginId ? 'channel' : 'main'
@@ -3452,10 +3500,7 @@ export function useChatActions(): {
           // Filter out team tools when the feature is disabled. Capture after registration changes.
           const allToolDefs = toolRegistry.getDefinitions()
           const finalToolDefs = filterTeamToolDefinitions(allToolDefs, settings.teamToolsEnabled)
-          let finalEffectiveToolDefs =
-            mode === 'chat'
-              ? filterTeamToolDefinitions(chatModeToolDefs, settings.teamToolsEnabled)
-              : finalToolDefs
+          let finalEffectiveToolDefs = finalToolDefs
 
           // Plan mode: restrict to read-only + planning tools
           const isPlanMode = useUIStore.getState().isPlanModeEnabled(sessionId)
@@ -5324,23 +5369,9 @@ export function useChatActions(): {
       requestContextMaxMessages: null,
       includeTrailingAssistantPlaceholder: false
     })
-    const MIN_MESSAGES = 8
-
-    // Limitation 2: minimum message count
-    if (messages.length < MIN_MESSAGES) {
+    if (messages.length === 0) {
       toast.error('Cannot compress', {
-        description: `At least ${MIN_MESSAGES} messages required for compression (currently ${messages.length})`
-      })
-      return 'blocked'
-    }
-
-    // Limitation 3: detect recent compressed summaries in both new and legacy top-of-session layouts.
-    const hasRecentSummary = messages
-      .slice(0, 3)
-      .some((message) => isCompactSummaryLikeMessage(message))
-    if (hasRecentSummary && messages.length < MIN_MESSAGES + 4) {
-      toast.error('Cannot compress', {
-        description: 'Too few messages since last compression, please continue the conversation'
+        description: 'No messages to compress'
       })
       return 'blocked'
     }
@@ -5412,14 +5443,16 @@ export function useChatActions(): {
     }
 
     try {
+      const preTokens = estimateManualCompressionInputTokens(messages, config)
       const { messages: compressed, result } = await runSidecarContextCompression({
         messages,
         provider: config,
-        focusPrompt: focusPrompt || undefined
+        focusPrompt: focusPrompt || undefined,
+        preTokens
       })
       if (!result.compressed) {
         toast.warning('No compression needed', {
-          description: 'Current message count insufficient for effective compression'
+          description: 'No compressible context found'
         })
         return 'skipped'
       }

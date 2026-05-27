@@ -227,6 +227,7 @@ export async function runSidecarContextCompression(args: {
   provider: ProviderConfig
   messages: UnifiedMessage[]
   focusPrompt?: string
+  preTokens?: number
 }): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
   const initialized = await agentBridge.initialize()
   if (!initialized) {
@@ -236,6 +237,9 @@ export async function runSidecarContextCompression(args: {
   return (await window.electron.ipcRenderer.invoke('agent:compress-context', {
     provider: args.provider,
     messages: args.messages,
-    ...(args.focusPrompt ? { focusPrompt: args.focusPrompt } : {})
+    ...(args.focusPrompt ? { focusPrompt: args.focusPrompt } : {}),
+    ...(typeof args.preTokens === 'number' && Number.isFinite(args.preTokens)
+      ? { preTokens: args.preTokens }
+      : {})
   })) as { messages: UnifiedMessage[]; result: CompressionResult }
 }

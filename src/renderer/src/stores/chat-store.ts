@@ -97,6 +97,8 @@ export interface ImageGenerationTiming {
 export interface CreateSessionOptions {
   preserveProjectless?: boolean
   planId?: string | null
+  workingFolder?: string | null
+  sshConnectionId?: string | null
 }
 
 // --- DB persistence helpers (queued fire-and-forget) ---
@@ -2315,8 +2317,8 @@ export const useChatStore = create<ChatStore>()(
         createdAt: now,
         updatedAt: now,
         projectId: targetProjectId ?? undefined,
-        workingFolder: targetProject?.workingFolder,
-        sshConnectionId: targetProject?.sshConnectionId,
+        workingFolder: targetProject?.workingFolder ?? options?.workingFolder ?? undefined,
+        sshConnectionId: targetProject?.sshConnectionId ?? options?.sshConnectionId ?? undefined,
         planId: options?.planId ?? undefined,
         providerId: sessionProviderId,
         modelId: sessionModelId

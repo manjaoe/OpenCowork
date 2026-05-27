@@ -177,6 +177,8 @@
       "low_confidence_main": "Low confidence; conservatively fell back to main"
     },
     "clickToSwitch": "click to switch",
+    "providers": "Providers",
+    "modelsCount": "{{count}} models",
     "noProviders": "No providers available",
     "noModels": "No models",
     "customPromptActive": "Custom system prompt active",

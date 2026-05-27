@@ -249,6 +249,13 @@ function isDefaultIgnoredDirName(name: string): boolean {
   return GREP_IGNORE_DIRS.has(name.toLowerCase())
 }
 
+function formatLocalDateFolderName(date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function includesDefaultIgnoredDir(filePath: string, searchRoot: string): boolean {
   const absolutePath = path.resolve(searchRoot, filePath)
   const relativePath = path.relative(searchRoot, absolutePath)
@@ -2540,6 +2547,16 @@ export function registerFsHandlers(): void {
     try {
       await fs.promises.mkdir(args.path, { recursive: true })
       return { success: true }
+    } catch (err) {
+      return { error: String(err) }
+    }
+  })
+
+  ipcMain.handle('fs:default-chat-working-folder', async () => {
+    try {
+      const folderPath = path.join(app.getPath('documents'), formatLocalDateFolderName(), 'Chat')
+      await fs.promises.mkdir(folderPath, { recursive: true })
+      return { path: folderPath }
     } catch (err) {
       return { error: String(err) }
     }

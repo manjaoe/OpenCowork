@@ -284,11 +284,11 @@ export function ImagePreview({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 pb-12 pt-16"
             onClick={() => setIsOpen(false)}
           >
             {/* Toolbar */}
-            <div className="absolute top-4 right-4 flex items-center gap-2">
+            <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
               {actions.map((action) => (
                 <button
                   key={action.key}
@@ -346,7 +346,7 @@ export function ImagePreview({
               exit={{ scale: 0.9 }}
               src={effectiveSrc}
               alt={alt}
-              className="max-w-full max-h-full object-contain"
+              className="max-h-[calc(100vh-7rem)] max-w-[calc(100vw-2rem)] object-contain"
               onLoad={handleImageLoad}
               onClick={(e) => e.stopPropagation()}
               {...(imageDimensions
@@ -355,7 +355,7 @@ export function ImagePreview({
             />
 
             {/* Close hint */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-sm">
+            <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 text-sm text-white/60">
               Click outside to close
             </div>
           </motion.div>

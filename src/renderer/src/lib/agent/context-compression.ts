@@ -404,18 +404,24 @@ export async function compressMessages(
   preTokens = 0
 ): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
   const originalCount = messages.length
-  if (originalCount < preserveCount + 2) {
+  const minMessagesToCompress = trigger === 'manual' ? 1 : 2
+  const effectivePreserveCount =
+    trigger === 'manual'
+      ? Math.min(Math.max(0, preserveCount), Math.max(0, originalCount - minMessagesToCompress))
+      : preserveCount
+
+  if (originalCount < effectivePreserveCount + minMessagesToCompress) {
     return {
       messages,
       result: { compressed: false, originalCount, newCount: originalCount }
     }
   }
 
-  const boundaryIndex = findSafeCompactBoundary(messages, messages.length - preserveCount)
+  const boundaryIndex = findSafeCompactBoundary(messages, messages.length - effectivePreserveCount)
   const messagesToCompress = messages.slice(0, boundaryIndex)
   const messagesToPreserve = messages.slice(boundaryIndex)
 
-  if (messagesToCompress.length < 2) {
+  if (messagesToCompress.length < minMessagesToCompress) {
     return {
       messages,
       result: { compressed: false, originalCount, newCount: originalCount }
