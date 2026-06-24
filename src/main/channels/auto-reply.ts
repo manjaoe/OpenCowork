@@ -108,13 +108,14 @@ export function handleChannelAutoReply(event: ChannelEvent): void {
     const now = Date.now()
     const sessionProviderId = pluginInstance?.providerId ?? null
     const sessionModelId = pluginInstance?.model ?? null
+    const sessionModelSelectionMode = sessionProviderId && sessionModelId ? 'manual' : 'inherit'
 
     if (!session) {
       const sessionId = nanoid()
       const title = data.chatName || data.senderName || data.chatId
       db.prepare(
-        `INSERT INTO sessions (id, title, icon, mode, created_at, updated_at, project_id, working_folder, ssh_connection_id, pinned, plugin_id, external_chat_id, provider_id, model_id)
-         VALUES (?, ?, NULL, 'cowork', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, title, icon, mode, created_at, updated_at, project_id, working_folder, ssh_connection_id, pinned, plugin_id, external_chat_id, provider_id, model_id, model_selection_mode)
+         VALUES (?, ?, NULL, 'cowork', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`
       ).run(
         sessionId,
         title,
@@ -126,7 +127,8 @@ export function handleChannelAutoReply(event: ChannelEvent): void {
         pluginId,
         compositeKey,
         sessionProviderId,
-        sessionModelId
+        sessionModelId,
+        sessionModelSelectionMode
       )
       session = { id: sessionId, title, project_id: pluginProject?.id ?? null }
     } else {
@@ -144,11 +146,9 @@ export function handleChannelAutoReply(event: ChannelEvent): void {
       }
 
       if (sessionProviderId || sessionModelId) {
-        db.prepare('UPDATE sessions SET provider_id = ?, model_id = ? WHERE id = ?').run(
-          sessionProviderId,
-          sessionModelId,
-          session.id
-        )
+        db.prepare(
+          'UPDATE sessions SET provider_id = ?, model_id = ?, model_selection_mode = ? WHERE id = ?'
+        ).run(sessionProviderId, sessionModelId, sessionModelSelectionMode, session.id)
       }
 
       const betterTitle = data.chatName || data.senderName

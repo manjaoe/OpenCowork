@@ -681,6 +681,14 @@ export function getDb(): Database.Database {
   } catch {
     /* exists */
   }
+  ensureColumn(db, 'sessions', 'model_selection_mode', "TEXT NOT NULL DEFAULT 'inherit'")
+  db.exec(
+    `UPDATE sessions
+        SET model_selection_mode = 'manual'
+      WHERE provider_id IS NOT NULL
+        AND model_id IS NOT NULL
+        AND model_selection_mode = 'inherit'`
+  )
 
   // Migration: add pinned column to sessions if missing
   if (!hasColumn(db, 'sessions', 'pinned')) {

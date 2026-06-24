@@ -211,6 +211,7 @@ export function registerDbHandlers(options: RegisterDbHandlersOptions = {}): voi
         pluginId?: string
         providerId?: string
         modelId?: string
+        modelSelectionMode?: string
       }
     ) => {
       const projectId = session.projectId
@@ -252,6 +253,10 @@ export function registerDbHandlers(options: RegisterDbHandlersOptions = {}): voi
           sshConnectionId: string | null
           planId: string | null
           pinned: boolean
+          pluginId: string | null
+          providerId: string | null
+          modelId: string | null
+          modelSelectionMode: string | null
         }>
       }
     ) => {

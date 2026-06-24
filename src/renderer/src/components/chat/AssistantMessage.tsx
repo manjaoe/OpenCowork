@@ -627,10 +627,17 @@ function CompletionTokenSummary({
                     <span className="flex min-w-0 items-center gap-1.5 text-zinc-400">
                       <span className="truncate">{row.label}</span>
                       {row.hint ? (
-                        <CircleHelp
-                          className="size-3 shrink-0 text-zinc-500"
-                          aria-label={row.hint}
-                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <CircleHelp
+                              className="size-3 shrink-0 text-zinc-500"
+                              aria-label={row.hint}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px] text-center text-xs">
+                            {row.hint}
+                          </TooltipContent>
+                        </Tooltip>
                       ) : null}
                     </span>
                     <span className="shrink-0 font-semibold tabular-nums text-zinc-100">

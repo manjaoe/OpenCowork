@@ -1139,16 +1139,17 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsVision: true,
       supportsFunctionCall: false
     },
-    // ── ByteDance Doubao ──
+    // ── ByteDance Doubao（官方价格为人民币元/百万tokens，按 1 USD ≈ 7.2 CNY 换算为 USD） ──
     {
       id: 'doubao-seed-2-0-code-preview-260215',
       name: 'Doubao Seed 2.0 Code Preview (260215)',
       icon: 'doubao',
       enabled: true,
       supportsVision: true,
-      inputPrice: 3.2,
-      outputPrice: 16,
-      cacheHitPrice: 0.64
+      contextLength: 256_000,
+      inputPrice: 0.444,
+      outputPrice: 2.222,
+      cacheHitPrice: 0.089
     },
     {
       id: 'doubao-seed-code-preview-latest',
@@ -1156,9 +1157,10 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'doubao',
       enabled: true,
       supportsVision: true,
-      inputPrice: 3.2,
-      outputPrice: 16,
-      cacheHitPrice: 0.64
+      contextLength: 256_000,
+      inputPrice: 0.444,
+      outputPrice: 2.222,
+      cacheHitPrice: 0.089
     },
     {
       id: 'doubao-seed-2-0-mini-260215',
@@ -1168,9 +1170,9 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsVision: true,
       supportsFunctionCall: true,
       contextLength: 256_000,
-      inputPrice: 0.2,
-      outputPrice: 2,
-      cacheHitPrice: 0.04,
+      inputPrice: 0.028,
+      outputPrice: 0.278,
+      cacheHitPrice: 0.006,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
@@ -1182,7 +1184,13 @@ export const routinAiPreset: BuiltinProviderPreset = {
       id: 'doubao-seed-2.0-code',
       name: 'Doubao Seed 2.0 Code',
       icon: 'doubao',
-      enabled: true
+      enabled: true,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      contextLength: 256_000,
+      inputPrice: 0.444,
+      outputPrice: 2.222,
+      cacheHitPrice: 0.089
     },
     {
       id: 'doubao-seed-2-0-pro-260215',
@@ -1190,9 +1198,11 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'doubao',
       enabled: true,
       supportsVision: true,
-      inputPrice: 3.2,
-      outputPrice: 16,
-      cacheHitPrice: 0.64,
+      supportsFunctionCall: true,
+      contextLength: 256_000,
+      inputPrice: 0.444,
+      outputPrice: 2.222,
+      cacheHitPrice: 0.089,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
@@ -1206,9 +1216,11 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'doubao',
       enabled: true,
       supportsVision: true,
-      inputPrice: 0.6,
-      outputPrice: 3.6,
-      cacheHitPrice: 0.12,
+      supportsFunctionCall: true,
+      contextLength: 256_000,
+      inputPrice: 0.083,
+      outputPrice: 0.5,
+      cacheHitPrice: 0.017,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
@@ -1224,9 +1236,9 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsVision: true,
       supportsFunctionCall: true,
       contextLength: 256_000,
-      inputPrice: 3.2,
-      outputPrice: 16,
-      cacheHitPrice: 0.64,
+      inputPrice: 0.833,
+      outputPrice: 4.167,
+      cacheHitPrice: 0.167,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
@@ -1242,9 +1254,9 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsVision: true,
       supportsFunctionCall: true,
       contextLength: 256_000,
-      inputPrice: 3.2,
-      outputPrice: 16,
-      cacheHitPrice: 0.64,
+      inputPrice: 0.833,
+      outputPrice: 4.167,
+      cacheHitPrice: 0.167,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
@@ -1260,9 +1272,9 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsVision: true,
       supportsFunctionCall: true,
       contextLength: 256_000,
-      inputPrice: 0.6,
-      outputPrice: 3.6,
-      cacheHitPrice: 0.12,
+      inputPrice: 0.417,
+      outputPrice: 2.083,
+      cacheHitPrice: 0.083,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},

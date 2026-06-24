@@ -17,7 +17,6 @@ import { useTaskStore } from './task-store'
 import { usePlanStore } from './plan-store'
 import { useUIStore } from './ui-store'
 import { useBackgroundSessionStore } from './background-session-store'
-import { useProviderStore } from './provider-store'
 import { useSettingsStore } from './settings-store'
 import { useInputDraftStore } from './input-draft-store'
 import { invalidateVisibleSessionCache } from '../lib/agent/session-runtime-router'
@@ -35,6 +34,7 @@ import {
 } from '../lib/agent/context-compression'
 
 export type SessionMode = 'chat' | 'clarify' | 'cowork' | 'code' | 'acp'
+export type SessionModelSelectionMode = 'inherit' | 'auto' | 'manual'
 
 export interface SessionPromptSnapshot {
   mode: SessionMode
@@ -91,9 +91,11 @@ export interface Session {
   /** Plugin sender identifiers (last known) */
   pluginSenderId?: string
   pluginSenderName?: string
-  /** Bound provider ID (null = use global active provider) */
+  /** How this session resolves its main model. */
+  modelSelectionMode?: SessionModelSelectionMode
+  /** Bound provider ID when modelSelectionMode is manual. */
   providerId?: string
-  /** Bound model ID (null = use global active model) */
+  /** Bound model ID when modelSelectionMode is manual. */
   modelId?: string
   /** In-memory prompt snapshot reused within the current app session */
   promptSnapshot?: SessionPromptSnapshot
@@ -195,7 +197,8 @@ function dbCreateSession(s: Session): void {
       planId: s.planId,
       pinned: s.pinned,
       providerId: s.providerId,
-      modelId: s.modelId
+      modelId: s.modelId,
+      modelSelectionMode: s.modelSelectionMode ?? (s.providerId && s.modelId ? 'manual' : 'inherit')
     })
     .catch(() => {})
     .finally(() => {
@@ -714,6 +717,9 @@ interface ChatStore {
   updateSessionMode: (id: string, mode: SessionMode) => void
   setWorkingFolder: (sessionId: string, folder: string) => void
   setSshConnectionId: (sessionId: string, connectionId: string | null) => void
+  setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
+  setSessionModelAuto: (sessionId: string) => void
+  setSessionModelInherit: (sessionId: string) => void
   updateSessionModel: (sessionId: string, providerId: string, modelId: string) => void
   clearSessionModelBinding: (sessionId: string) => void
   setSessionPlanId: (sessionId: string, planId: string | null) => void
@@ -830,6 +836,7 @@ interface SessionRow {
   external_chat_id?: string | null
   provider_id?: string | null
   model_id?: string | null
+  model_selection_mode?: string | null
 }
 
 interface MessageRow {
@@ -856,6 +863,16 @@ const MESSAGE_WINDOW_MAX_SIZE = 240
 const MESSAGE_WINDOW_TAIL_PRESERVE = 80
 const REQUEST_CONTEXT_MAX_MESSAGES = 160
 const REQUEST_CONTEXT_SAFE_BOUNDARY_SCAN = 12
+
+function normalizeSessionModelSelectionMode(
+  value?: string | null,
+  providerId?: string | null,
+  modelId?: string | null
+): SessionModelSelectionMode {
+  if (providerId && modelId && value !== 'auto') return 'manual'
+  if (value === 'inherit' || value === 'auto' || value === 'manual') return value
+  return 'inherit'
+}
 
 function rowToProject(row: ProjectRow): Project {
   return {
@@ -894,6 +911,11 @@ function rowToSession(row: SessionRow, messages: UnifiedMessage[] = []): Session
     pinned: row.pinned === 1,
     pluginId: row.plugin_id ?? undefined,
     externalChatId: row.external_chat_id ?? undefined,
+    modelSelectionMode: normalizeSessionModelSelectionMode(
+      row.model_selection_mode,
+      row.provider_id,
+      row.model_id
+    ),
     providerId: row.provider_id ?? undefined,
     modelId: row.model_id ?? undefined
   }
@@ -919,6 +941,7 @@ function mergeSessionSummary(
   session.pinned = next.pinned
   session.pluginId = next.pluginId
   session.externalChatId = next.externalChatId
+  session.modelSelectionMode = next.modelSelectionMode
   session.providerId = next.providerId
   session.modelId = next.modelId
   // When preserveLoadedMessages is true the in-memory state may already be
@@ -2390,16 +2413,6 @@ export const useChatStore = create<ChatStore>()(
         })
 
         if (nextActiveSessionId) {
-          const activeSession = sessions.find((s) => s.id === nextActiveSessionId)
-          if (activeSession?.providerId && activeSession?.modelId) {
-            const providerStore = useProviderStore.getState()
-            if (activeSession.providerId !== providerStore.activeProviderId) {
-              providerStore.setActiveProvider(activeSession.providerId)
-            }
-            if (activeSession.modelId !== providerStore.activeModelId) {
-              providerStore.setActiveModel(activeSession.modelId)
-            }
-          }
           await get().loadRecentSessionMessages(nextActiveSessionId)
           await useTaskStore.getState().loadTasksForSession(nextActiveSessionId)
           const planStore = usePlanStore.getState()
@@ -2420,7 +2433,6 @@ export const useChatStore = create<ChatStore>()(
     createSession: (mode, projectId, options) => {
       const id = nanoid()
       const now = Date.now()
-      const { activeProviderId, activeModelId } = useProviderStore.getState()
       const { newSessionDefaultModel } = useSettingsStore.getState()
       const preserveProjectless = options?.preserveProjectless === true
 
@@ -2438,18 +2450,25 @@ export const useChatStore = create<ChatStore>()(
         targetProjectId = targetProject.id
       }
 
-      const followGlobalModel =
-        !targetProject?.providerId && newSessionDefaultModel?.useGlobalActiveModel !== false
-      const sessionProviderId = targetProject?.providerId
-        ? targetProject.providerId
-        : followGlobalModel
-          ? undefined
-          : (newSessionDefaultModel?.providerId ?? activeProviderId ?? undefined)
-      const sessionModelId = targetProject?.providerId
-        ? targetProject.modelId
-        : followGlobalModel
-          ? undefined
-          : newSessionDefaultModel?.modelId || activeModelId || undefined
+      const projectHasModelBinding = Boolean(targetProject?.providerId && targetProject?.modelId)
+      const hasFixedDefaultModel = Boolean(
+        !projectHasModelBinding &&
+        newSessionDefaultModel?.useGlobalActiveModel === false &&
+        newSessionDefaultModel.providerId &&
+        newSessionDefaultModel.modelId
+      )
+      const sessionProviderId = projectHasModelBinding
+        ? targetProject?.providerId
+        : hasFixedDefaultModel
+          ? newSessionDefaultModel?.providerId
+          : undefined
+      const sessionModelId = projectHasModelBinding
+        ? targetProject?.modelId
+        : hasFixedDefaultModel
+          ? newSessionDefaultModel?.modelId
+          : undefined
+      const modelSelectionMode: SessionModelSelectionMode =
+        projectHasModelBinding || hasFixedDefaultModel ? 'manual' : 'inherit'
 
       const newSession: Session = {
         id,
@@ -2467,6 +2486,7 @@ export const useChatStore = create<ChatStore>()(
         workingFolder: targetProject?.workingFolder ?? options?.workingFolder ?? undefined,
         sshConnectionId: targetProject?.sshConnectionId ?? options?.sshConnectionId ?? undefined,
         planId: options?.planId ?? undefined,
+        modelSelectionMode,
         providerId: sessionProviderId,
         modelId: sessionModelId
       }
@@ -2608,19 +2628,6 @@ export const useChatStore = create<ChatStore>()(
       get().releaseDormantSessions()
       // Switch per-session tool calls in agent-store
       useAgentStore.getState().switchToolCallSession(prevId, id)
-      // Restore per-session model selection to global provider store
-      if (id) {
-        const session = get().sessions.find((s) => s.id === id)
-        if (session?.providerId && session?.modelId) {
-          const providerStore = useProviderStore.getState()
-          if (session.providerId !== providerStore.activeProviderId) {
-            providerStore.setActiveProvider(session.providerId)
-          }
-          if (session.modelId !== providerStore.activeModelId) {
-            providerStore.setActiveModel(session.modelId)
-          }
-        }
-      }
       // Load tasks for the new session
       if (id) {
         void useTaskStore.getState().loadTasksForSession(id)
@@ -2724,32 +2731,72 @@ export const useChatStore = create<ChatStore>()(
       dbUpdateSession(sessionId, { sshConnectionId: connectionId })
     },
 
-    updateSessionModel: (sessionId, providerId, modelId) => {
+    setSessionModelManual: (sessionId, providerId, modelId) => {
       const now = Date.now()
       set((state) => {
         const session = state.sessions.find((s) => s.id === sessionId)
         if (session) {
+          session.modelSelectionMode = 'manual'
           session.providerId = providerId
           session.modelId = modelId
           delete session.promptSnapshot
           session.updatedAt = now
         }
       })
-      dbUpdateSession(sessionId, { providerId, modelId, updatedAt: now })
+      dbUpdateSession(sessionId, {
+        modelSelectionMode: 'manual',
+        providerId,
+        modelId,
+        updatedAt: now
+      })
     },
 
-    clearSessionModelBinding: (sessionId) => {
+    setSessionModelAuto: (sessionId) => {
       const now = Date.now()
       set((state) => {
         const session = state.sessions.find((s) => s.id === sessionId)
         if (session) {
+          session.modelSelectionMode = 'auto'
           delete session.providerId
           delete session.modelId
           delete session.promptSnapshot
           session.updatedAt = now
         }
       })
-      dbUpdateSession(sessionId, { providerId: null, modelId: null, updatedAt: now })
+      dbUpdateSession(sessionId, {
+        modelSelectionMode: 'auto',
+        providerId: null,
+        modelId: null,
+        updatedAt: now
+      })
+    },
+
+    setSessionModelInherit: (sessionId) => {
+      const now = Date.now()
+      set((state) => {
+        const session = state.sessions.find((s) => s.id === sessionId)
+        if (session) {
+          session.modelSelectionMode = 'inherit'
+          delete session.providerId
+          delete session.modelId
+          delete session.promptSnapshot
+          session.updatedAt = now
+        }
+      })
+      dbUpdateSession(sessionId, {
+        modelSelectionMode: 'inherit',
+        providerId: null,
+        modelId: null,
+        updatedAt: now
+      })
+    },
+
+    updateSessionModel: (sessionId, providerId, modelId) => {
+      get().setSessionModelManual(sessionId, providerId, modelId)
+    },
+
+    clearSessionModelBinding: (sessionId) => {
+      get().setSessionModelInherit(sessionId)
     },
 
     setSessionPlanId: (sessionId, planId) => {
@@ -2829,7 +2876,12 @@ export const useChatStore = create<ChatStore>()(
         loadedRangeStart: session.loadedRangeStart ?? 0,
         loadedRangeEnd: session.loadedRangeEnd ?? session.messages.length,
         lastKnownMessageCount:
-          session.lastKnownMessageCount ?? session.messageCount ?? session.messages.length
+          session.lastKnownMessageCount ?? session.messageCount ?? session.messages.length,
+        modelSelectionMode: normalizeSessionModelSelectionMode(
+          session.modelSelectionMode,
+          session.providerId,
+          session.modelId
+        )
       }
       set((state) => {
         state.sessions.push(normalizedSession)
@@ -2899,7 +2951,12 @@ export const useChatStore = create<ChatStore>()(
         externalChatId: undefined,
         pluginChatType: undefined,
         pluginSenderId: undefined,
-        pluginSenderName: undefined
+        pluginSenderName: undefined,
+        modelSelectionMode: normalizeSessionModelSelectionMode(
+          session.modelSelectionMode,
+          session.providerId,
+          session.modelId
+        )
       }
 
       set((state) => {
@@ -3008,7 +3065,6 @@ export const useChatStore = create<ChatStore>()(
 
     upsertSessionFromSync: (row, options) => {
       const syncedSession = rowToSession(row, [])
-      const activeSessionId = get().activeSessionId
 
       set((state) => {
         const existing = dedupeSessionsById(state, row.id)
@@ -3026,16 +3082,6 @@ export const useChatStore = create<ChatStore>()(
           state.activeProjectId = syncedSession.projectId
         }
       })
-
-      if (activeSessionId === row.id && syncedSession.providerId && syncedSession.modelId) {
-        const providerStore = useProviderStore.getState()
-        if (providerStore.activeProviderId !== syncedSession.providerId) {
-          providerStore.setActiveProvider(syncedSession.providerId)
-        }
-        if (providerStore.activeModelId !== syncedSession.modelId) {
-          providerStore.setActiveModel(syncedSession.modelId)
-        }
-      }
 
       get().releaseDormantSessions()
     },
@@ -3161,6 +3207,11 @@ export const useChatStore = create<ChatStore>()(
         projectId: source.projectId,
         workingFolder: source.workingFolder,
         sshConnectionId: source.sshConnectionId,
+        modelSelectionMode: normalizeSessionModelSelectionMode(
+          source.modelSelectionMode,
+          source.providerId,
+          source.modelId
+        ),
         providerId: source.providerId,
         modelId: source.modelId
       }
@@ -3207,6 +3258,11 @@ export const useChatStore = create<ChatStore>()(
         projectId: source.projectId,
         workingFolder: source.workingFolder,
         sshConnectionId: source.sshConnectionId,
+        modelSelectionMode: normalizeSessionModelSelectionMode(
+          source.modelSelectionMode,
+          source.providerId,
+          source.modelId
+        ),
         providerId: source.providerId,
         modelId: source.modelId
       }

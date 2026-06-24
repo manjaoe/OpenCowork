@@ -154,6 +154,8 @@
     "noModel": "No model",
     "autoModel": "Auto",
     "autoModelDesc": "Use the fast model to classify task type first, then dynamically choose the main or fast model",
+    "followGlobalModel": "Follow global model",
+    "followGlobalModelDesc": "Use the global main model setting for this session.",
     "autoModelTooltip": "Auto · This turn used {{route}} · {{model}} · {{taskType}} · {{confidence}}{{complexity, select,  { } other { · {{complexity}}}}{{risk, select,  { } other { · {{risk}}}}{{reason, select,  { } other { · {{reason}}}}}",
     "autoModelTooltipIdle": "Auto · No turn sent yet, routing happens right before send",
     "autoModelRouting": "Auto · Classifying this turn's task type…",

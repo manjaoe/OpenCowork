@@ -22,6 +22,7 @@ import {
   Activity,
   Brain,
   CheckCircle2,
+  CircleHelp,
   Clock,
   ImageIcon,
   RefreshCcw,
@@ -69,6 +70,7 @@ import {
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { usePromptRecommendation } from '@renderer/hooks/use-prompt-recommendation'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { useChannelStore } from '@renderer/stores/channel-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import {
   getSessionInputDraftKey,
@@ -114,6 +116,7 @@ import { resolveEffectiveActiveMcpIds, useMcpStore } from '@renderer/stores/mcp-
 import { usePlanStore } from '@renderer/stores/plan-store'
 import { useGoalStore } from '@renderer/stores/goal-store'
 import { useSkillsStore } from '@renderer/stores/skills-store'
+import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { resolvePluginsForProject, useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { validateGoalObjective } from '@renderer/lib/agent/goal-context'
 import {
@@ -172,20 +175,37 @@ function ContextRing({
   isCompressing = false
 }: ContextRingProps): React.JSX.Element | null {
   const { t } = useTranslation('chat')
-  const activeSessionProviderId = useChatStore((s) => {
+  const activeSession = useChatStore((s) => {
     const idx = s.activeSessionId ? s.sessionsById[s.activeSessionId] : undefined
-    const activeSession = idx !== undefined ? s.sessions[idx] : undefined
-    return activeSession?.providerId ?? null
+    return idx !== undefined ? (s.sessions[idx] ?? null) : null
   })
-  const activeSessionModelId = useChatStore((s) => {
-    const idx = s.activeSessionId ? s.sessionsById[s.activeSessionId] : undefined
-    const activeSession = idx !== undefined ? s.sessions[idx] : undefined
-    return activeSession?.modelId ?? null
-  })
+  const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
+  const channels = useChannelStore((s) => s.channels)
+  const autoSelection = useUIStore((s) =>
+    activeSession ? (s.autoModelSelectionsBySession[activeSession.id] ?? null) : null
+  )
 
   const activeModelCfg = useProviderStore((s) => {
-    const providerId = activeSessionProviderId ?? s.activeProviderId
-    const modelId = activeSessionModelId ?? s.activeModelId
+    const activeChannel = activeSession?.pluginId
+      ? (channels.find((item) => item.id === activeSession.pluginId) ?? null)
+      : null
+    const selection = resolveSessionModelSelection({
+      session: activeSession,
+      providers: s.providers,
+      activeProviderId: s.activeProviderId,
+      activeModelId: s.activeModelId,
+      globalMode: mainModelSelectionMode,
+      channelProviderId: activeChannel?.providerId,
+      channelModelId: activeChannel?.model
+    })
+    const providerId =
+      selection.isAutoModeActive && autoSelection?.providerId
+        ? autoSelection.providerId
+        : selection.providerId
+    const modelId =
+      selection.isAutoModeActive && autoSelection?.modelId
+        ? autoSelection.modelId
+        : selection.modelId
     if (!providerId || !modelId) return null
     const provider = s.providers.find((p) => p.id === providerId)
     return provider?.models.find((m) => m.id === modelId) ?? null
@@ -605,18 +625,35 @@ function RuntimeTextMetric({
   label,
   value,
   tone,
-  suffix
+  suffix,
+  hint
 }: {
   label: string
   value: string
   tone: RuntimeMetricTone
   suffix?: string
+  hint?: string
 }): React.JSX.Element {
   return (
-    <span className="shrink-0">
-      <span className="text-muted-foreground/60">{label}</span>{' '}
-      <span className={cn('tabular-nums font-medium', metricToneClasses[tone])}>{value}</span>
+    <span className="inline-flex shrink-0 items-center gap-1">
+      <span className="inline-flex items-center gap-1">
+        <span className="text-muted-foreground/60">{label}</span>{' '}
+        <span className={cn('tabular-nums font-medium', metricToneClasses[tone])}>{value}</span>
+      </span>
       {suffix && <span className="ml-0.5 tabular-nums text-muted-foreground/50">{suffix}</span>}
+      {hint ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <CircleHelp
+              className="size-3 shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
+              aria-label={hint}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[220px] text-xs">
+            {hint}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
     </span>
   )
 }
@@ -928,6 +965,9 @@ function ComposerRuntimeStatus({
             label={t('input.runtimeMetrics.tps', { defaultValue: 'TPS' })}
             value={formatRuntimeThroughput(latestTps)}
             tone="speed"
+            hint={t('input.runtimeMetrics.tpsHint', {
+              defaultValue: 'Output tokens generated per second'
+            })}
           />
         </>
       )}
@@ -938,6 +978,9 @@ function ComposerRuntimeStatus({
             label={t('input.runtimeMetrics.ttft', { defaultValue: 'TTFT' })}
             value={formatRuntimeTtft(latestTtftMs)}
             tone="latency"
+            hint={t('input.runtimeMetrics.ttftHint', {
+              defaultValue: 'Time to first token'
+            })}
           />
         </>
       )}

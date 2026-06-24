@@ -56,6 +56,7 @@ import {
   RESPONSES_SESSION_SCOPE_AGENT_MAIN,
   withResponsesSessionScope
 } from '@renderer/lib/api/responses-session-policy'
+import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { createProvider } from '@renderer/lib/api/provider'
 import type {
   UnifiedMessage,
@@ -1035,24 +1036,6 @@ function shouldAutoContinueLongRunningRun(options: {
   return false
 }
 
-function resolveProviderDefaultModelId(providerId: string): string | null {
-  const store = useProviderStore.getState()
-  const provider = store.providers.find((p) => p.id === providerId)
-  if (!provider) return null
-  if (provider.defaultModel) {
-    const model = provider.models.find((m) => m.id === provider.defaultModel)
-    if (model) return model.id
-  }
-  const enabledChatModels = provider.models.filter(
-    (m) => m.enabled && (!m.category || m.category === 'chat')
-  )
-  if (enabledChatModels.length > 0) {
-    return enabledChatModels[0].id
-  }
-  const enabledModels = provider.models.filter((m) => m.enabled)
-  return enabledModels[0]?.id ?? provider.models[0]?.id ?? null
-}
-
 function findProviderModel(
   providerId: string | null | undefined,
   modelId: string | null | undefined
@@ -1454,34 +1437,39 @@ async function resolveMainRequestProvider(options: {
   const settings = useSettingsStore.getState()
   const providerStore = useProviderStore.getState()
   const session = useChatStore.getState().sessions.find((item) => item.id === options.sessionId)
+  const channelMeta = session?.pluginId
+    ? (useChannelStore.getState().channels.find((item) => item.id === session.pluginId) ?? null)
+    : null
+  const sessionModelSelection = resolveSessionModelSelection({
+    session,
+    providers: providerStore.providers,
+    activeProviderId: providerStore.activeProviderId,
+    activeModelId: providerStore.activeModelId,
+    globalMode: settings.mainModelSelectionMode,
+    channelProviderId: channelMeta?.providerId,
+    channelModelId: channelMeta?.model
+  })
 
-  let explicitProviderId: string | null = null
-  let explicitModelId: string | null = null
-
-  if (session?.pluginId) {
-    const channelMeta = useChannelStore
-      .getState()
-      .channels.find((item) => item.id === session.pluginId)
-    explicitProviderId = channelMeta?.providerId ?? session.providerId ?? null
-    explicitModelId = channelMeta?.model ?? session.modelId ?? null
-    if (explicitProviderId && !explicitModelId) {
-      explicitModelId = resolveProviderDefaultModelId(explicitProviderId)
-    }
-  } else if (session?.providerId && session?.modelId) {
-    explicitProviderId = session.providerId
-    explicitModelId = session.modelId
-  }
-
-  if (explicitProviderId && explicitModelId) {
-    const providerConfig = providerStore.getProviderConfigById(explicitProviderId, explicitModelId)
+  if (
+    sessionModelSelection.effectiveMode === 'manual' &&
+    sessionModelSelection.providerId &&
+    sessionModelSelection.modelId
+  ) {
+    const providerConfig = providerStore.getProviderConfigById(
+      sessionModelSelection.providerId,
+      sessionModelSelection.modelId
+    )
     return {
       providerConfig,
-      modelConfig: findProviderModel(explicitProviderId, explicitModelId).modelConfig,
+      modelConfig: findProviderModel(
+        sessionModelSelection.providerId,
+        sessionModelSelection.modelId
+      ).modelConfig,
       autoSelection: null
     }
   }
 
-  if (settings.mainModelSelectionMode === 'auto') {
+  if (sessionModelSelection.effectiveMode === 'auto') {
     if (options.requiresVision) {
       const providerConfig = providerStore.getActiveProviderConfig()
       return {
@@ -3392,10 +3380,21 @@ export function useChatActions(): {
 
         const resolvedSession = useChatStore.getState().sessions.find((s) => s.id === sessionId)
         const resolvedSessionMode = resolvedSession?.mode ?? uiStore.mode
-        const shouldShowAutoRouting =
-          !resolvedSession?.providerId &&
-          !resolvedSession?.pluginId &&
-          settings.mainModelSelectionMode === 'auto'
+        const resolvedChannelMeta = resolvedSession?.pluginId
+          ? (useChannelStore
+              .getState()
+              .channels.find((item) => item.id === resolvedSession.pluginId) ?? null)
+          : null
+        const resolvedSessionModelSelection = resolveSessionModelSelection({
+          session: resolvedSession,
+          providers: providerStore.providers,
+          activeProviderId: providerStore.activeProviderId,
+          activeModelId: providerStore.activeModelId,
+          globalMode: settings.mainModelSelectionMode,
+          channelProviderId: resolvedChannelMeta?.providerId,
+          channelModelId: resolvedChannelMeta?.model
+        })
+        const shouldShowAutoRouting = resolvedSessionModelSelection.isAutoModeActive
         const latestUserInput =
           source === 'continue'
             ? extractLatestUserInput(inMemoryMessages)
@@ -3893,10 +3892,7 @@ export function useChatActions(): {
             : promptCandidateToolDefs
 
           const autoSelectedFastWithoutTools =
-            settings.mainModelSelectionMode === 'auto' &&
             mode !== 'clarify' &&
-            !resolvedSession?.providerId &&
-            !resolvedSession?.pluginId &&
             providerResolution.autoSelection?.target === 'fast' &&
             providerResolution.autoSelection.toolsAllowed === false &&
             source !== 'continue'
@@ -5231,7 +5227,8 @@ export function useChatActions(): {
                         ...event.debugInfo,
                         providerId: event.debugInfo.providerId ?? agentProviderConfig.providerId,
                         providerBuiltinId:
-                          event.debugInfo.providerBuiltinId ?? agentProviderConfig.providerBuiltinId,
+                          event.debugInfo.providerBuiltinId ??
+                          agentProviderConfig.providerBuiltinId,
                         model: event.debugInfo.model ?? agentProviderConfig.model,
                         executionPath:
                           event.debugInfo.executionPath ?? (useSidecar ? 'sidecar' : 'node')
@@ -5266,7 +5263,6 @@ export function useChatActions(): {
                         })
                       }
                     }
-
                   }
                   break
                 }
@@ -6018,7 +6014,6 @@ export async function sendImplementPlanInNewSession(planId: string): Promise<voi
 
   const chatStore = useChatStore.getState()
   const uiStore = useUIStore.getState()
-  const providerStore = useProviderStore.getState()
   const sourceSession = chatStore.sessions.find((item) => item.id === latestPlan.sessionId)
   if (!sourceSession) return
   const sourceProject = sourceSession.projectId
@@ -6034,14 +6029,12 @@ export async function sendImplementPlanInNewSession(planId: string): Promise<voi
   }
   chatStore.setSshConnectionId(newSessionId, sourceSshConnectionId ?? null)
 
-  if (sourceSession.providerId && sourceSession.modelId) {
-    chatStore.updateSessionModel(newSessionId, sourceSession.providerId, sourceSession.modelId)
-    if (providerStore.activeProviderId !== sourceSession.providerId) {
-      providerStore.setActiveProvider(sourceSession.providerId)
-    }
-    if (providerStore.activeModelId !== sourceSession.modelId) {
-      providerStore.setActiveModel(sourceSession.modelId)
-    }
+  if (sourceSession.modelSelectionMode === 'auto') {
+    chatStore.setSessionModelAuto(newSessionId)
+  } else if (sourceSession.providerId && sourceSession.modelId) {
+    chatStore.setSessionModelManual(newSessionId, sourceSession.providerId, sourceSession.modelId)
+  } else if (sourceSession.modelSelectionMode === 'inherit') {
+    chatStore.setSessionModelInherit(newSessionId)
   }
 
   try {

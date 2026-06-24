@@ -154,6 +154,8 @@
     "noModel": "未选择模型",
     "autoModel": "Auto",
     "autoModelDesc": "先用快速模型识别任务类型，再动态选择主模型或快速模型",
+    "followGlobalModel": "跟随全局模型",
+    "followGlobalModelDesc": "当前会话使用全局主模型设置。",
     "autoModelTooltip": "Auto · 本次使用{{route}} · {{model}} · {{taskType}} · {{confidence}}{{complexity, select,  { } other { · {{complexity}}}}{{risk, select,  { } other { · {{risk}}}}{{reason, select,  { } other { · {{reason}}}}}",
     "autoModelTooltipIdle": "Auto · 尚未发送，本轮会在发送前动态判断",
     "autoModelRouting": "Auto · 正在判断本次任务类型…",

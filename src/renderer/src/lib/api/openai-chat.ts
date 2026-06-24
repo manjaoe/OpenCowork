@@ -457,7 +457,10 @@ class OpenAIChatProvider implements APIProvider {
                 buf.extraContent = googleExtraContent
               }
 
-              if (tc.id) buf.id = tc.id
+              // Some OpenAI-compatible providers emit a fresh id for each delta
+              // on the same tool index. Keep the first id so lifecycle events
+              // continue to target one tool call.
+              if (tc.id && !buf.id) buf.id = tc.id
               if (tc.name) buf.name = tc.name
               if (!buf.started && buf.id && buf.name) {
                 buf.started = true

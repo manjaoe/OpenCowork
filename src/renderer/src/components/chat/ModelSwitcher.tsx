@@ -8,7 +8,8 @@ import {
   Brain,
   Settings2,
   MonitorSmartphone,
-  Loader2
+  Loader2,
+  Globe2
 } from 'lucide-react'
 import {
   isProviderAvailableForModelSelection,
@@ -49,6 +50,7 @@ import {
   MAX_CONTEXT_COMPRESSION_THRESHOLD,
   MIN_CONTEXT_COMPRESSION_THRESHOLD
 } from '@renderer/lib/agent/context-compression'
+import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 
 function formatContextLength(length?: number): string | null {
   if (!length) return null
@@ -216,28 +218,25 @@ function supportsPriorityServiceTier(model: AIModelConfig | undefined): boolean 
   return !!model?.serviceTier
 }
 
-function selectModel(
-  provider: AIProvider,
-  modelId: string,
-  activeProviderId: string | null,
-  setActiveProvider: (id: string) => void,
-  setActiveModel: (id: string) => void,
-  setOpen: (v: boolean) => void
-): void {
+function selectModel(provider: AIProvider, modelId: string, setOpen: (v: boolean) => void): void {
   const pid = provider.id
-  if (pid !== activeProviderId) setActiveProvider(pid)
-  setActiveModel(modelId)
-  useSettingsStore.getState().updateSettings({ mainModelSelectionMode: 'manual' })
   const sessionId = useChatStore.getState().activeSessionId
-  if (sessionId) {
-    useChatStore.getState().updateSessionModel(sessionId, pid, modelId)
-    const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
-    if (session?.pluginId) {
-      void useChannelStore.getState().updateChannel(session.pluginId, {
-        providerId: pid,
-        model: modelId
-      })
+  const session = sessionId
+    ? useChatStore.getState().sessions.find((item) => item.id === sessionId)
+    : null
+
+  if (session) {
+    useChatStore.getState().setSessionModelManual(session.id, pid, modelId)
+    if (session.pluginId) {
+      void useChannelStore
+        .getState()
+        .updateChannel(session.pluginId, { providerId: pid, model: modelId })
     }
+  } else {
+    const providerStore = useProviderStore.getState()
+    if (pid !== providerStore.activeProviderId) providerStore.setActiveProvider(pid)
+    providerStore.setActiveModel(modelId)
+    useSettingsStore.getState().updateSettings({ mainModelSelectionMode: 'manual' })
   }
   setOpen(false)
 }
@@ -257,12 +256,30 @@ function selectFastModel(
 }
 
 function selectAutoModel(setOpen: (v: boolean) => void): void {
-  useSettingsStore.getState().updateSettings({ mainModelSelectionMode: 'auto' })
   const sessionId = useChatStore.getState().activeSessionId
-  if (sessionId) {
-    const session = useChatStore.getState().sessions.find((item) => item.id === sessionId)
-    if (!session?.pluginId) {
-      useChatStore.getState().clearSessionModelBinding(sessionId)
+  const session = sessionId
+    ? useChatStore.getState().sessions.find((item) => item.id === sessionId)
+    : null
+  if (session && !session.pluginId) {
+    useChatStore.getState().setSessionModelAuto(session.id)
+  } else {
+    useSettingsStore.getState().updateSettings({ mainModelSelectionMode: 'auto' })
+  }
+  setOpen(false)
+}
+
+function selectFollowGlobalModel(setOpen: (v: boolean) => void): void {
+  const sessionId = useChatStore.getState().activeSessionId
+  const session = sessionId
+    ? useChatStore.getState().sessions.find((item) => item.id === sessionId)
+    : null
+  if (session) {
+    useChatStore.getState().setSessionModelInherit(session.id)
+    if (session.pluginId) {
+      void useChannelStore.getState().updateChannel(session.pluginId, {
+        providerId: null,
+        model: null
+      })
     }
   }
   setOpen(false)
@@ -703,8 +720,6 @@ export function ModelSwitcher({
   const activeFastProviderId = useProviderStore((s) => s.activeFastProviderId)
   const activeFastModelId = useProviderStore((s) => s.activeFastModelId)
   const providers = useProviderStore((s) => s.providers)
-  const setActiveProvider = useProviderStore((s) => s.setActiveProvider)
-  const setActiveModel = useProviderStore((s) => s.setActiveModel)
   const setActiveFastProvider = useProviderStore((s) => s.setActiveFastProvider)
   const setActiveFastModel = useProviderStore((s) => s.setActiveFastModel)
   const fastSelection = useProviderStore(
@@ -720,6 +735,7 @@ export function ModelSwitcher({
   const quotaByKey = useQuotaStore((s) => s.quotaByKey)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const sessions = useChatStore((s) => s.sessions)
+  const channels = useChannelStore((s) => s.channels)
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
   const autoModelSelectionsBySession = useUIStore((s) => s.autoModelSelectionsBySession)
   const autoModelRoutingStatesBySession = useUIStore((s) => s.autoModelRoutingStatesBySession)
@@ -735,18 +751,34 @@ export function ModelSwitcher({
     [providers]
   )
   const activeSession = sessions.find((item) => item.id === activeSessionId)
-  const sessionProviderId = activeSession?.providerId ?? null
-  const sessionModelId = activeSession?.modelId ?? null
-  const isSessionBound = !isFastRoute && Boolean(sessionProviderId && sessionModelId)
+  const activeChannel = activeSession?.pluginId
+    ? (channels.find((item) => item.id === activeSession.pluginId) ?? null)
+    : null
+  const sessionModelSelection = resolveSessionModelSelection({
+    session: activeSession,
+    providers,
+    activeProviderId,
+    activeModelId,
+    globalMode: mainModelSelectionMode,
+    channelProviderId: activeChannel?.providerId,
+    channelModelId: activeChannel?.model
+  })
   const displayProviderId = isFastRoute
     ? (fastSelection.providerId ?? activeFastProviderId ?? activeProviderId)
-    : (sessionProviderId ?? activeProviderId)
+    : sessionModelSelection.providerId
   const displayModelId = isFastRoute
     ? fastSelection.modelId || activeFastModelId || activeModelId
-    : (sessionModelId ?? activeModelId)
+    : sessionModelSelection.modelId
   const displayProvider = providers.find((p) => p.id === displayProviderId)
   const displayModel = displayProvider?.models.find((m) => m.id === displayModelId)
-  const isAutoModeActive = !isFastRoute && !isSessionBound && mainModelSelectionMode === 'auto'
+  const isAutoModeActive = !isFastRoute && sessionModelSelection.isAutoModeActive
+  const isExplicitAutoActive =
+    !isFastRoute &&
+    (activeSession
+      ? !activeSession.pluginId && sessionModelSelection.mode === 'auto'
+      : mainModelSelectionMode === 'auto')
+  const isFollowGlobalActive =
+    !isFastRoute && Boolean(activeSession) && sessionModelSelection.mode === 'inherit'
   const autoResolvedProvider = autoSelection?.providerId
     ? providers.find((provider) => provider.id === autoSelection.providerId)
     : null
@@ -958,7 +990,7 @@ export function ModelSwitcher({
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
-                    modelId={displayModelId}
+                    modelId={displayModelId ?? undefined}
                     providerBuiltinId={displayProvider?.builtinId}
                     size={20}
                   />
@@ -978,7 +1010,7 @@ export function ModelSwitcher({
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
-                    modelId={displayModelId}
+                    modelId={displayModelId ?? undefined}
                     providerBuiltinId={displayProvider?.builtinId}
                     size={20}
                   />
@@ -1025,18 +1057,58 @@ export function ModelSwitcher({
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {!isFastRoute && (
+          {!isFastRoute && activeSession && (
+            <div className="border-b p-1">
+              <button
+                className={cn(
+                  'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
+                  isFollowGlobalActive && 'bg-primary/5'
+                )}
+                onClick={() => selectFollowGlobalModel(setOpen)}
+              >
+                <span className="mt-0.5 flex size-5 items-center justify-center shrink-0">
+                  {isFollowGlobalActive ? (
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
+                      <Check className="size-3 text-primary" />
+                    </span>
+                  ) : (
+                    <Globe2 size={18} />
+                  )}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span
+                    className={cn(
+                      'truncate text-xs',
+                      isFollowGlobalActive
+                        ? 'font-semibold text-primary'
+                        : 'text-foreground/80 group-hover:text-foreground'
+                    )}
+                  >
+                    {t('topbar.followGlobalModel', {
+                      defaultValue: 'Follow global model'
+                    })}
+                  </span>
+                  <span className="line-clamp-2 text-[10px] text-muted-foreground">
+                    {t('topbar.followGlobalModelDesc', {
+                      defaultValue: 'Use the global main model setting for this session.'
+                    })}
+                  </span>
+                </div>
+              </button>
+            </div>
+          )}
+          {!isFastRoute && !activeSession?.pluginId && (
             <div className="border-b p-1">
               <button
                 ref={autoModelRef}
                 className={cn(
                   'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
-                  isAutoModeActive && 'bg-primary/5'
+                  isExplicitAutoActive && 'bg-primary/5'
                 )}
                 onClick={() => selectAutoModel(setOpen)}
               >
                 <span className="mt-0.5 flex size-5 items-center justify-center shrink-0">
-                  {isAutoModeActive ? (
+                  {isExplicitAutoActive ? (
                     <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
                       <Check className="size-3 text-primary" />
                     </span>
@@ -1048,7 +1120,7 @@ export function ModelSwitcher({
                   <span
                     className={cn(
                       'truncate text-xs',
-                      isAutoModeActive
+                      isExplicitAutoActive
                         ? 'font-semibold text-primary'
                         : 'text-foreground/80 group-hover:text-foreground'
                     )}
@@ -1177,14 +1249,7 @@ export function ModelSwitcher({
                                         setActiveFastModel,
                                         setOpen
                                       )
-                                    : selectModel(
-                                        provider,
-                                        m.id,
-                                        activeProviderId,
-                                        setActiveProvider,
-                                        setActiveModel,
-                                        setOpen
-                                      )
+                                    : selectModel(provider, m.id, setOpen)
                                 }
                               >
                                 <span className="mt-0.5 shrink-0">

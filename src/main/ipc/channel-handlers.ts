@@ -465,11 +465,10 @@ export function registerChannelHandlers(channelManager: ChannelManager): void {
           const db = getDb()
           const providerId = next.providerId ?? null
           const modelId = providerId ? (next.model ?? null) : null
-          db.prepare('UPDATE sessions SET provider_id = ?, model_id = ? WHERE plugin_id = ?').run(
-            providerId,
-            modelId,
-            id
-          )
+          const modelSelectionMode = providerId && modelId ? 'manual' : 'inherit'
+          db.prepare(
+            'UPDATE sessions SET provider_id = ?, model_id = ?, model_selection_mode = ? WHERE plugin_id = ?'
+          ).run(providerId, modelId, modelSelectionMode, id)
         } catch (err) {
           console.error('[Channels] Failed to sync channel session model:', err)
         }

@@ -2984,7 +2984,9 @@ async function* sendOpenAIChat(
         args: '',
         started: false
       }
-      if (tc.id) existing.id = tc.id
+      // Some OpenAI-compatible providers emit a fresh id for each delta on the
+      // same tool index. Keep the first id so lifecycle events target one call.
+      if (tc.id && !existing.id) existing.id = tc.id
       if (tc.name) existing.name = tc.name
       if (tc.extraContent) existing.extraContent = tc.extraContent
       if (!existing.started && existing.id && existing.name) {
