@@ -369,7 +369,9 @@ export class GoalRuntimeService {
     }
   }
 
-  async finalizeRun(runId: string): Promise<{ requestContinue: boolean; sessionId?: string }> {
+  async finalizeRun(
+    runId: string
+  ): Promise<{ requestContinue: boolean; sessionId?: string; goalId?: string }> {
     const run = this.activeRuns.get(runId)
     if (!run) return { requestContinue: false }
 
@@ -458,7 +460,7 @@ export class GoalRuntimeService {
 
     return {
       requestContinue,
-      ...(requestContinue ? { sessionId } : {})
+      ...(requestContinue ? { sessionId, ...(goalId ? { goalId } : {}) } : {})
     }
   }
 

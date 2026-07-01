@@ -206,6 +206,8 @@ async function inlineImagesForExport(root: HTMLElement): Promise<void> {
   })
 }
 
+const inlineRemoteImagesForExport = inlineImagesForExport
+
 const EXPORT_CSS = `
   [data-session-image-export] {
     background: hsl(var(--background));
@@ -428,7 +430,7 @@ export async function copySessionAsImageToClipboard({
     await waitForFrames(3)
     await (document as Document & { fonts?: FontFaceSet }).fonts?.ready
     await waitForImageDomToSettle(exportStage.content)
-    await inlineImagesForExport(exportStage.content)
+    await inlineRemoteImagesForExport(exportStage.content)
     await waitForFrames(2)
     const blob = await captureSessionImageBlob(exportStage)
     await writeImageBlobToClipboard(blob)

@@ -644,10 +644,7 @@ function UserMessageLocator({
           </>
         ) : null}
 
-        <div
-          className="pointer-events-auto absolute right-0 top-0 h-full w-11"
-          onPointerLeave={() => setPreviewMessageId(null)}
-        >
+        <div className="pointer-events-none absolute right-0 top-0 h-full w-11">
           {items.map((item, itemIndex) => {
             const active = activeMessageId === item.id
             const previewing = previewMessageId === item.id
@@ -661,9 +658,10 @@ function UserMessageLocator({
                   defaultValue: 'Jump to user message {{index}}: {{preview}}'
                 })}
                 title={item.preview}
-                className="group/marker absolute right-0 flex h-6 w-11 -translate-y-1/2 items-center justify-end rounded-sm outline-none"
+                className="pointer-events-auto group/marker absolute right-0 flex h-6 w-11 -translate-y-1/2 items-center justify-end rounded-sm outline-none"
                 style={{ top: getCompactLocatorMarkerTop(itemIndex, items.length) }}
                 onPointerEnter={() => setPreviewMessageId(item.id)}
+                onPointerLeave={() => setPreviewMessageId(null)}
                 onFocus={() => setPreviewMessageId(item.id)}
                 onBlur={() => setPreviewMessageId(null)}
                 onClick={() => onJump(item)}

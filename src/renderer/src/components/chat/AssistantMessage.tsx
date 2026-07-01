@@ -936,6 +936,7 @@ function CopyButton({ text }: { text: string }): React.JSX.Element {
 
   return (
     <button
+      type="button"
       onClick={handleCopy}
       className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
     >
@@ -1074,6 +1075,7 @@ function MermaidImageCopyButton({ svg }: { svg: string }): React.JSX.Element {
 
   return (
     <button
+      type="button"
       onClick={() => void handleCopy()}
       disabled={busy || !svg.trim()}
       title="Copy Mermaid diagram to clipboard"
@@ -1129,6 +1131,7 @@ function MermaidCodeBlock({ code }: { code: string }): React.JSX.Element {
         </span>
         <div className="flex items-center gap-0.5">
           <button
+            type="button"
             onClick={() => setZoomOpen(true)}
             disabled={!svg.trim()}
             title="Zoom in Mermaid diagram"

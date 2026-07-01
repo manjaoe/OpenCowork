@@ -1,6 +1,11 @@
 import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { safePostMessageToWindow } from '../window-ipc'
-import { AGENT_STREAM_MSGPACK_CHANNEL } from '../../shared/messagepack/agent-stream-codec'
+import {
+  AGENT_STREAM_MSGPACK_CHANNEL,
+  decodeAgentStreamEnvelope
+} from '../../shared/messagepack/agent-stream-codec'
+import type { AgentStreamEvent, ToolCallStateWire } from '../../shared/agent-stream-protocol'
+import type { InteractiveAgentEvent, ToolCallState } from '../../shared/agent-loop-types'
 import {
   SIDECAR_APPROVAL_REQUEST_MSGPACK_CHANNEL,
   SIDECAR_APPROVAL_RESPONSE_MSGPACK_CHANNEL,
@@ -28,6 +33,8 @@ import {
   isPluginToolEnabled
 } from './channel-handlers'
 import { showSystemNotification } from './notify-handlers'
+import { getGoalRuntimeService } from '../goals/goal-runtime'
+import { emitGoalContinueRequested } from '../goals/goal-sync'
 import {
   cancelJob,
   getActiveRunJobIds,
@@ -184,6 +191,176 @@ function enrichAgentRunParams(params: unknown): unknown {
   }
 }
 
+async function prepareGoalAwareAgentRunParams(
+  params: unknown,
+  manager: SidecarBridgeManager
+): Promise<unknown> {
+  const enrichedParams = enrichAgentRunParams(params)
+  const record = normalizeRendererRequestRecord(enrichedParams)
+  const runId = readNonEmptyString(record.runId)
+  const sessionId = readNonEmptyString(record.sessionId)
+  const messages = Array.isArray(record.messages) ? record.messages : null
+
+  if (!runId || !sessionId || !messages) {
+    return enrichedParams
+  }
+
+  const preparedMessages = await getGoalRuntimeService().prepareRun({
+    runId,
+    sessionId,
+    planMode: record.planMode === true,
+    source: readAgentRunSource(record.goalRunSource),
+    messages: messages as Parameters<
+      ReturnType<typeof getGoalRuntimeService>['prepareRun']
+    >[0]['messages'],
+    enqueueMessages: (queuedMessages) => {
+      void manager
+        .request(
+          'agent/append-messages',
+          {
+            runId,
+            messages: queuedMessages
+          },
+          10_000
+        )
+        .catch((error) => {
+          console.warn(
+            '[Sidecar] Failed to append goal runtime messages:',
+            error instanceof Error ? error.message : String(error)
+          )
+        })
+    }
+  })
+
+  return {
+    ...record,
+    messages: preparedMessages
+  }
+}
+
+function readAgentRunSource(value: unknown): 'user_turn' | 'continue' {
+  return value === 'continue' ? 'continue' : 'user_turn'
+}
+
+function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function normalizeInteractiveToolCall(toolCall: ToolCallStateWire): ToolCallState {
+  return {
+    id: toolCall.id,
+    name: toolCall.name,
+    input: toolCall.input,
+    status: toolCall.status === 'canceled' ? 'error' : toolCall.status,
+    output: toolCall.output,
+    error:
+      toolCall.error ?? (toolCall.status === 'canceled' ? 'Tool call was canceled' : undefined),
+    requiresApproval: toolCall.requiresApproval,
+    startedAt: toolCall.startedAt,
+    completedAt: toolCall.completedAt
+  }
+}
+
+function mapNativeGoalRuntimeEvent(event: AgentStreamEvent): InteractiveAgentEvent | null {
+  switch (event.type) {
+    case 'tool_use_streaming_start':
+      return {
+        type: 'tool_use_streaming_start',
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        ...(event.extraContent
+          ? { toolCallExtraContent: asOptionalRecord(event.extraContent) }
+          : {})
+      }
+    case 'tool_use_generated':
+      return {
+        type: 'tool_use_generated',
+        toolUseBlock: {
+          id: event.toolUseBlock.id,
+          name: event.toolUseBlock.name,
+          input: event.toolUseBlock.input,
+          ...(event.toolUseBlock.extraContent
+            ? { extraContent: asOptionalRecord(event.toolUseBlock.extraContent) }
+            : {})
+        }
+      }
+    case 'tool_call_start':
+      return {
+        type: 'tool_call_start',
+        toolCall: normalizeInteractiveToolCall(event.toolCall)
+      }
+    case 'tool_call_result':
+      return {
+        type: 'tool_call_result',
+        toolCall: normalizeInteractiveToolCall(event.toolCall)
+      }
+    case 'message_end':
+      return {
+        type: 'message_end',
+        usage: event.usage,
+        timing: event.timing,
+        providerResponseId: event.providerResponseId
+      }
+    case 'error':
+      return {
+        type: 'error',
+        error: Object.assign(new Error(event.message), {
+          name: event.errorType ?? 'NativeAgentError',
+          details: event.details,
+          stack: event.stackTrace
+        })
+      }
+    case 'loop_end':
+      return {
+        type: 'loop_end',
+        reason: event.reason
+      }
+    default:
+      return null
+  }
+}
+
+async function observeGoalRuntimeFrame(bytes: Uint8Array | Buffer): Promise<void> {
+  let envelope: ReturnType<typeof decodeAgentStreamEnvelope>
+  try {
+    envelope = decodeAgentStreamEnvelope(bytes)
+  } catch (error) {
+    console.warn(
+      '[Sidecar] Failed to decode native stream for goal runtime:',
+      error instanceof Error ? error.message : String(error)
+    )
+    return
+  }
+
+  const goalRuntime = getGoalRuntimeService()
+  const hasError = envelope.events.some((event) => event.type === 'error')
+  const hasLoopEnd = envelope.events.some((event) => event.type === 'loop_end')
+  for (const event of envelope.events) {
+    const mapped = mapNativeGoalRuntimeEvent(event)
+    if (!mapped) continue
+    await goalRuntime.observeEvent(envelope.runId, mapped)
+  }
+
+  if (hasError && !hasLoopEnd) {
+    await goalRuntime.observeEvent(envelope.runId, { type: 'loop_end', reason: 'error' })
+  }
+
+  if (!hasLoopEnd && !hasError) {
+    return
+  }
+
+  const result = await goalRuntime.finalizeRun(envelope.runId)
+  if (result.requestContinue && result.sessionId) {
+    emitGoalContinueRequested({
+      sessionId: result.sessionId,
+      goalId: result.goalId,
+      reason: 'goal-auto-continue'
+    })
+  }
+}
+
 function isUsableRendererWindow(window: BrowserWindow | null | undefined): window is BrowserWindow {
   return (
     !!window &&
@@ -268,6 +445,7 @@ export function registerSidecarHandlers(): void {
   const pendingRendererToolRequests = new Map<string, PendingRendererToolRequest>()
   const runWindowIds = new Map<string, number>()
   const sessionWindowIds = new Map<string, number>()
+  const goalRuntimeObservationChains = new Map<string, Promise<void>>()
 
   const cleanupAgentRunIfTerminal = (runId: string, terminal: boolean): void => {
     if (!terminal) return
@@ -304,7 +482,42 @@ export function registerSidecarHandlers(): void {
     return sent
   }
 
+  const queueGoalRuntimeObservation = (
+    frame: import('../lib/native-worker').NativeWorkerRawEventFrame
+  ): void => {
+    if (!frame.runId) {
+      void observeGoalRuntimeFrame(frame.bytes).catch((error) => {
+        console.warn(
+          '[Sidecar] Goal runtime stream observation failed:',
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+      return
+    }
+
+    const runId = frame.runId
+    const previous = goalRuntimeObservationChains.get(runId) ?? Promise.resolve()
+    const next = previous
+      .catch(() => {})
+      .then(() => observeGoalRuntimeFrame(frame.bytes))
+      .catch((error) => {
+        console.warn(
+          '[Sidecar] Goal runtime stream observation failed:',
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+
+    goalRuntimeObservationChains.set(runId, next)
+    void next.finally(() => {
+      if (goalRuntimeObservationChains.get(runId) === next) {
+        goalRuntimeObservationChains.delete(runId)
+      }
+    })
+  }
+
   manager.setRawEventHandler((frame) => {
+    queueGoalRuntimeObservation(frame)
+
     const targetWindow = resolveRendererTargetWindow(frame, runWindowIds, sessionWindowIds, {
       allowFallback: false
     })
@@ -549,7 +762,7 @@ export function registerSidecarHandlers(): void {
     rememberRendererOrigin(event, params, runWindowIds, sessionWindowIds)
     const ready = await manager.ensureStarted()
     if (!ready) throw new Error('SIDECAR_UNAVAILABLE')
-    const enrichedParams = enrichAgentRunParams(params)
+    const enrichedParams = await prepareGoalAwareAgentRunParams(params, manager)
     try {
       const result = (await manager.request('agent/run', enrichedParams, 60_000)) as {
         started: boolean
