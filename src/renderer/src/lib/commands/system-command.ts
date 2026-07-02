@@ -25,15 +25,6 @@ function decodeAttribute(value: string): string {
     .replace(/&amp;/g, '&')
 }
 
-function encodeAttribute(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
 export function normalizeCommandName(name: string): string {
   return name.trim().toLowerCase()
 }
@@ -102,23 +93,6 @@ function tokenizeSlashCommandArguments(text: string): string[] {
   return args
 }
 
-export function buildSlashCommandUserText(
-  commandName: string,
-  userText: string,
-  args: string[]
-): string {
-  if (!userText) return ''
-
-  return `<system-reminder>
-The user invoked slash command /${normalizeCommandName(commandName)} with explicit arguments.
-Raw arguments: ${userText}
-Parsed arguments: ${JSON.stringify(args)}
-Treat these values as slash-command parameters.
-</system-reminder>
-
-${userText}`
-}
-
 export function parseSlashCommandInput(text: string): ParsedSlashCommandInput | null {
   const normalized = text.trimStart()
   if (!normalized.startsWith('/')) return null
@@ -133,10 +107,6 @@ export function parseSlashCommandInput(text: string): ParsedSlashCommandInput | 
     userText,
     args: tokenizeSlashCommandArguments(userText)
   }
-}
-
-export function serializeSystemCommand(command: SystemCommandSnapshot): string {
-  return `<system-command name="${encodeAttribute(command.name)}">${command.content}</system-command>`
 }
 
 export function parseSystemCommandTag(text: string): ParsedSystemCommandTag | null {

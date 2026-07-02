@@ -148,6 +148,8 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         string model,
         string transport)
     {
+        var debugBody = AgentRuntimeDebugPayload.PrepareBodyFile(body, parameters);
+
         await AgentRuntimeTools.EmitAsync(
             state,
             context,
@@ -163,7 +165,10 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
                     JsonHelpers.GetString(provider, "providerBuiltinId"),
                     model,
                     ExecutionPath: "sidecar",
-                    Transport: transport)));
+                    Transport: transport,
+                    PromptCacheKeyHash: ResolvePromptCacheKeyHash(provider),
+                    BodyRef: debugBody?.Ref,
+                    BodyBytes: debugBody?.Bytes)));
     }
 
     private static bool IsMissingToolOutputError(Exception ex)

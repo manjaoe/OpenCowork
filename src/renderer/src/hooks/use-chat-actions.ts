@@ -20,7 +20,6 @@ import {
   calculateCacheReadRatio,
   withCacheShapeDebugInfo
 } from '@renderer/lib/agent/cache-shape'
-import { prependTurnContextToLastUserMessage } from '@renderer/lib/agent/turn-context'
 import {
   decodeStructuredToolResult,
   encodeToolError,
@@ -30,6 +29,10 @@ import {
   buildSystemPrompt,
   resolvePromptEnvironmentContext
 } from '@renderer/lib/agent/system-prompt'
+import {
+  type WorkspacePromptCacheScope,
+  withWorkspacePromptCacheKey
+} from '@renderer/lib/agent/prompt-cache-key'
 import { subAgentEvents } from '@renderer/lib/agent/sub-agents/events'
 import {
   clearLastTaskInvocation,
@@ -77,11 +80,7 @@ import type {
   SelectedFileReadsMeta,
   SelectedFileReference
 } from '@renderer/lib/api/types'
-import {
-  setLastDebugInfo,
-  setRequestTraceInfo,
-  shouldKeepFullDebugBody
-} from '@renderer/lib/debug-store'
+import { setLastDebugInfo, setRequestTraceInfo } from '@renderer/lib/debug-store'
 import { estimateTokens } from '@renderer/lib/format-tokens'
 import {
   QUEUED_IMAGE_ONLY_TEXT,
@@ -95,9 +94,7 @@ import {
 } from '@renderer/lib/image-attachments'
 import { loadCommandSnapshot } from '@renderer/lib/commands/command-loader'
 import {
-  buildSlashCommandUserText,
   parseSlashCommandInput,
-  serializeSystemCommand,
   type SystemCommandSnapshot
 } from '@renderer/lib/commands/system-command'
 import { parseSelectFileText } from '@renderer/lib/select-file-tags'
@@ -204,7 +201,12 @@ import {
 import {
   buildSidecarAgentRunRequest,
   isNativeSidecarProviderConfig,
-  normalizeSidecarApprovalRequest
+  normalizeSidecarApprovalRequest,
+  type SidecarPluginChannelContext,
+  type SidecarPlanExecutionContext,
+  type SidecarPlanRevisionContext,
+  type SidecarSlashCommandContext,
+  type SidecarSystemCommandContext
 } from '@renderer/lib/ipc/sidecar-protocol'
 import { agentStream } from '@renderer/lib/ipc/agent-stream-receiver'
 import { toAgentEvent, toSubAgentEvent } from '@renderer/lib/agent/stream-event-adapter'
@@ -467,11 +469,98 @@ function summarizeActiveTeamForPromptCache(activeTeam: ActiveTeam | null | undef
 type MessageSource = 'team' | 'queued' | 'continue' | 'quoted'
 type PendingSessionDispatchMode = 'after_loop' | 'interrupt_next'
 const SELECTED_FILE_READ_MAX_LINES = 1_000
+const SELECTED_FILE_TEXT_READ_BLOCKED_EXTENSIONS = new Set([
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.docm',
+  '.dot',
+  '.dotx',
+  '.xls',
+  '.xlsx',
+  '.xlsm',
+  '.xlsb',
+  '.ppt',
+  '.pptx',
+  '.pps',
+  '.ppsx',
+  '.odt',
+  '.ods',
+  '.odp',
+  '.rtf',
+  '.pages',
+  '.numbers',
+  '.key',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.bmp',
+  '.webp',
+  '.ico',
+  '.tif',
+  '.tiff',
+  '.heic',
+  '.heif',
+  '.avif',
+  '.psd',
+  '.ai',
+  '.sketch',
+  '.fig',
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.oga',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.opus',
+  '.mp4',
+  '.m4v',
+  '.mov',
+  '.webm',
+  '.mkv',
+  '.avi',
+  '.zip',
+  '.rar',
+  '.7z',
+  '.tar',
+  '.gz',
+  '.tgz',
+  '.bz2',
+  '.xz',
+  '.zst',
+  '.dmg',
+  '.iso',
+  '.img',
+  '.exe',
+  '.msi',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.bin',
+  '.dat',
+  '.sqlite',
+  '.sqlite3',
+  '.db',
+  '.parquet',
+  '.arrow',
+  '.wasm',
+  '.pyc',
+  '.class',
+  '.jar',
+  '.ttf',
+  '.otf',
+  '.woff',
+  '.woff2'
+])
 
 export interface SendMessageOptions {
   longRunningMode?: boolean
   clearCompletedTasksOnTurnStart?: boolean
   skipPendingPlanRevision?: boolean
+  planExecutionContext?: SidecarPlanExecutionContext
+  planRevisionContext?: SidecarPlanRevisionContext
   skipAutoContextCompression?: boolean
   enablePlanMode?: boolean
   goalObjective?: string
@@ -540,6 +629,20 @@ function getBaseNameFromPath(value: string): string {
   const normalized = normalizeFilePath(value)
   const parts = normalized.split('/').filter(Boolean)
   return parts[parts.length - 1] || normalized || 'file'
+}
+
+function getLowerFileExtension(value: string): string {
+  const normalized = normalizeFilePath(value).split(/[?#]/, 1)[0] ?? ''
+  const filename = normalized.split('/').filter(Boolean).pop() ?? normalized
+  const dotIndex = filename.lastIndexOf('.')
+  if (dotIndex <= 0) return ''
+  return filename.slice(dotIndex).toLowerCase()
+}
+
+function getSelectedFileTextReadSkipReason(filePath: string): string | null {
+  const extension = getLowerFileExtension(filePath)
+  if (!extension || !SELECTED_FILE_TEXT_READ_BLOCKED_EXTENSIONS.has(extension)) return null
+  return extension === '.pdf' ? 'pdf' : 'nonText'
 }
 
 function resolvePreviewPath(sendPath: string, workingFolder?: string): string {
@@ -640,6 +743,15 @@ async function buildSelectedFileReadContext(args: {
       lineCount: 0,
       maxLines: SELECTED_FILE_READ_MAX_LINES,
       truncated: false
+    }
+    const skipReason = getSelectedFileTextReadSkipReason(readPath || displayPath)
+    if (skipReason) {
+      metaFiles.push({
+        ...baseMeta,
+        skipped: true,
+        skipReason
+      })
+      continue
     }
 
     try {
@@ -962,6 +1074,97 @@ function shouldSuppressTransientRuntimeError(message: string | null | undefined)
     (/Cannot access a disposed object\./i.test(normalized) &&
       /CancellationTokenSource/i.test(normalized))
   )
+}
+
+function isSidecarUnavailableRuntimeError(
+  message: string | null | undefined,
+  errorType?: string | null
+): boolean {
+  const haystack = `${errorType ?? ''} ${message ?? ''}`.trim()
+  if (!haystack) return false
+
+  return (
+    /\bsidecar_unavailable\b/i.test(haystack) ||
+    /\bSIDECAR_UNAVAILABLE\b/i.test(haystack) ||
+    /\bsidecar unavailable\b/i.test(haystack) ||
+    /\bsidecar .*not running\b/i.test(haystack) ||
+    /\bnative worker (?:is missing|is not running|exited|ipc|request timed out)/i.test(haystack)
+  )
+}
+
+function resolveRuntimeErrorContent(
+  errorMessage: string,
+  errorType?: string
+): {
+  message: string
+  errorType?: string
+  details?: string
+  toastTitle: string
+} {
+  const normalizedMessage = normalizeContinuationErrorMessage(errorMessage)
+  if (isSidecarUnavailableRuntimeError(normalizedMessage, errorType)) {
+    return {
+      message: i18n.t('assistantMessage.agentError.sidecarUnavailableMessage', {
+        ns: 'chat',
+        defaultValue:
+          'The local agent runtime is temporarily unavailable. OpenCowork tried to restart it; retry this message. If it keeps happening in development, run `npm run native:publish` and restart OpenCowork.'
+      }),
+      errorType: 'sidecar_unavailable',
+      details: normalizedMessage,
+      toastTitle: i18n.t('assistantMessage.agentError.titleRuntimeUnavailable', {
+        ns: 'chat',
+        defaultValue: 'Local runtime unavailable'
+      })
+    }
+  }
+
+  return {
+    message: normalizedMessage,
+    ...(errorType ? { errorType } : {}),
+    toastTitle: i18n.t('assistantMessage.agentError.titleRuntime', {
+      ns: 'chat',
+      defaultValue: 'Runtime error'
+    })
+  }
+}
+
+function readRuntimeErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error
+  return 'Unknown error'
+}
+
+function readRuntimeErrorType(error: unknown, fallback?: string): string | undefined {
+  if (fallback) return fallback
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    if (typeof record.type === 'string' && record.type.trim()) {
+      return record.type
+    }
+  }
+  return undefined
+}
+
+function appendRuntimeErrorCard(args: {
+  sessionId: string
+  assistantMsgId: string
+  message: string
+  errorType?: string
+  details?: string
+}): void {
+  appendRuntimeContentBlock(args.sessionId, args.assistantMsgId, {
+    type: 'agent_error',
+    code: 'runtime_error',
+    message: args.message,
+    ...(args.errorType ? { errorType: args.errorType } : {}),
+    ...(args.details ? { details: args.details } : {})
+  })
 }
 
 function reconcileSubAgentCompletionFromTaskToolCall(
@@ -1446,14 +1649,15 @@ function getConfiguredMaxParallelTools(): number {
   return clampMaxParallelToolCalls(useSettingsStore.getState().maxParallelToolCalls)
 }
 
-function buildProviderConfigWithRuntimeSettings(
+async function buildProviderConfigWithRuntimeSettings(
   providerConfig: ProviderConfig | null,
   modelConfig: AIModelConfig | null,
   sessionId: string,
+  promptCacheScope: WorkspacePromptCacheScope,
   settings = useSettingsStore.getState()
-): ProviderConfig | null {
+): Promise<ProviderConfig | null> {
   if (!providerConfig) {
-    return settings.apiKey
+    const fallbackConfig: ProviderConfig | null = settings.apiKey
       ? {
           type: settings.provider,
           apiKey: settings.apiKey,
@@ -1465,6 +1669,9 @@ function buildProviderConfigWithRuntimeSettings(
           thinkingEnabled: false,
           reasoningEffort: settings.reasoningEffort
         }
+      : null
+    return fallbackConfig
+      ? await withWorkspacePromptCacheKey(fallbackConfig, promptCacheScope)
       : null
   }
 
@@ -1481,7 +1688,7 @@ function buildProviderConfigWithRuntimeSettings(
     thinkingConfig: resolvedThinkingConfig
   })
 
-  return {
+  const config: ProviderConfig = {
     ...providerConfig,
     maxTokens: effectiveMaxTokens,
     temperature: settings.temperature,
@@ -1498,6 +1705,7 @@ function buildProviderConfigWithRuntimeSettings(
     cacheTtl: modelConfig?.cacheTtl ?? providerConfig.cacheTtl,
     sessionId
   }
+  return await withWorkspacePromptCacheKey(config, promptCacheScope)
 }
 
 async function resolveMainRequestProvider(options: {
@@ -1959,11 +2167,10 @@ export function quotePendingSessionMessageIntoConversation(
 
   // Render immediately; process after the current provider request finishes.
   const textBlocks: Array<Extract<ContentBlock, { type: 'text' }>> = []
-  if (target.command) {
-    textBlocks.push({ type: 'text', text: serializeSystemCommand(target.command) })
-  }
   if (target.text) {
     textBlocks.push({ type: 'text', text: target.text })
+  } else if (target.command) {
+    textBlocks.push({ type: 'text', text: `/${target.command.name}` })
   }
   let userContent: string | ContentBlock[]
   if (hasImages) {
@@ -2071,6 +2278,7 @@ interface ResolvedUserCommand {
   command: SystemCommandSnapshot | null
   userText: string
   titleInput: string
+  slashCommandContext?: SidecarSlashCommandContext
 }
 
 function canAutoGenerateSessionTitle(currentTitle: string | undefined): boolean {
@@ -2122,8 +2330,17 @@ async function resolveUserCommand(
 
   return {
     command: loaded.command,
-    userText: buildSlashCommandUserText(loaded.command.name, parsed.userText, parsed.args),
-    titleInput: parsed.userText ? `${loaded.command.name} ${parsed.userText}` : loaded.command.name
+    userText: parsed.userText,
+    titleInput: parsed.userText ? `${loaded.command.name} ${parsed.userText}` : loaded.command.name,
+    ...(parsed.userText
+      ? {
+          slashCommandContext: {
+            commandName: loaded.command.name,
+            rawArguments: parsed.userText,
+            parsedArguments: parsed.args
+          }
+        }
+      : {})
   }
 }
 
@@ -2865,6 +3082,11 @@ function finishStoppingSession(sessionId: string): void {
 function stopSessionLocally(sessionId: string): void {
   finishStoppingSession(sessionId)
   abortTeamForSession(sessionId)
+}
+
+export function stopSessionStreaming(sessionId: string): void {
+  stopSessionLocally(sessionId)
+  emitSessionControlSync({ kind: 'stop_streaming', sessionId })
 }
 
 function abortSessionLocally(sessionId: string): void {
@@ -3649,6 +3871,36 @@ export function useChatActions(): {
               titleInput: text.trim()
             }
           : resolvedCommand
+        const explicitPlanRevisionContext =
+          source !== 'continue' && options?.planRevisionContext
+            ? {
+                ...options.planRevisionContext,
+                feedback:
+                  options.planRevisionContext.feedback ??
+                  (effectiveResolvedCommand.userText || text)
+              }
+            : undefined
+        const requestPlanRevisionContext =
+          source === 'continue'
+            ? undefined
+            : (explicitPlanRevisionContext ??
+              (pendingPlanRevisionContext
+                ? {
+                    ...pendingPlanRevisionContext,
+                    feedback: effectiveResolvedCommand.userText || text
+                  }
+                : undefined))
+        const requestPlanExecutionContext =
+          source === 'continue' ? undefined : options?.planExecutionContext
+        const requestSlashCommandContext =
+          source === 'continue' ? undefined : effectiveResolvedCommand.slashCommandContext
+        const requestSystemCommandContext: SidecarSystemCommandContext | undefined =
+          source !== 'continue' && effectiveResolvedCommand.command
+            ? {
+                name: effectiveResolvedCommand.command.name,
+                content: effectiveResolvedCommand.command.content
+              }
+            : undefined
 
         const resolvedSession = useChatStore.getState().sessions.find((s) => s.id === sessionId)
         const resolvedSessionMode = resolvedSession?.mode ?? uiStore.mode
@@ -3692,10 +3944,16 @@ export function useChatActions(): {
           isContinue: source === 'continue',
           requiresVision: latestUserHasImages
         })
-        const baseProviderConfig = buildProviderConfigWithRuntimeSettings(
+        const baseProviderConfig = await buildProviderConfigWithRuntimeSettings(
           providerResolution.providerConfig,
           providerResolution.modelConfig,
           sessionId,
+          {
+            projectId: resolvedSession?.projectId,
+            workingFolder: resolveSessionWorkingFolder(resolvedSession),
+            sshConnectionId: resolvedSession?.sshConnectionId,
+            target: resolvedSession?.sshConnectionId ? 'ssh' : 'local'
+          },
           settings
         )
 
@@ -3835,9 +4093,18 @@ export function useChatActions(): {
                 session: sessionSnapshot
               })
             : {}
-
-        // Add user message (multi-modal when images attached)
         const isQueuedInsertion = source === 'queued'
+        const turnRequestContextTexts: string[] = []
+        if (isQueuedInsertion) {
+          turnRequestContextTexts.push(QUEUED_MESSAGE_SYSTEM_REMIND)
+        }
+        if (appliedGoalObjective) {
+          turnRequestContextTexts.push(buildGoalMessageSystemReminder(appliedGoalObjective))
+        }
+        if (selectedFileReadContext.contextText) {
+          turnRequestContextTexts.push(selectedFileReadContext.contextText)
+        }
+        // Add user message (multi-modal when images attached)
         let expectedUserRequestMessage: UnifiedMessage | null = null
         if (shouldAppendUserMessage) {
           let userContent: string | ContentBlock[]
@@ -3845,31 +4112,10 @@ export function useChatActions(): {
           const hasImages = Boolean(images && images.length > 0)
           const textForUserBlock =
             effectiveResolvedCommand.userText ||
+            (effectiveResolvedCommand.command ? `/${effectiveResolvedCommand.command.name}` : '') ||
             (isQueuedInsertion && hasImages && !effectiveResolvedCommand.command
               ? QUEUED_IMAGE_ONLY_TEXT
               : '')
-
-          if (isQueuedInsertion) {
-            textBlocks.push({ type: 'text', text: QUEUED_MESSAGE_SYSTEM_REMIND })
-          }
-
-          if (appliedGoalObjective) {
-            textBlocks.push({
-              type: 'text',
-              text: buildGoalMessageSystemReminder(appliedGoalObjective)
-            })
-          }
-
-          if (selectedFileReadContext.contextText) {
-            textBlocks.push({ type: 'text', text: selectedFileReadContext.contextText })
-          }
-
-          if (effectiveResolvedCommand.command) {
-            textBlocks.push({
-              type: 'text',
-              text: serializeSystemCommand(effectiveResolvedCommand.command)
-            })
-          }
 
           if (textForUserBlock) {
             textBlocks.push({ type: 'text', text: textForUserBlock })
@@ -3900,7 +4146,14 @@ export function useChatActions(): {
         const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
         if (shouldAppendUserMessage && session && canAutoGenerateSessionTitle(session.title)) {
           const capturedSessionId = sessionId
-          generateSessionTitle(effectiveResolvedCommand.titleInput)
+          generateSessionTitle(effectiveResolvedCommand.titleInput, {
+            workspace: {
+              projectId: session.projectId,
+              workingFolder: resolveSessionWorkingFolder(session),
+              sshConnectionId: session.sshConnectionId,
+              target: session.sshConnectionId ? 'ssh' : 'local'
+            }
+          })
             .then((result) => {
               if (result) {
                 const store = useChatStore.getState()
@@ -4034,8 +4287,14 @@ export function useChatActions(): {
           sshConnection
         })
         const activeTeam = useTeamStore.getState().activeTeam
+        const isPlanMode = useUIStore.getState().isPlanModeEnabled(sessionId)
 
-        if (mode === 'chat' && chatModeToolDefs.length === 0 && !hasGoalContextForRun) {
+        if (
+          mode === 'chat' &&
+          chatModeToolDefs.length === 0 &&
+          !hasGoalContextForRun &&
+          !isPlanMode
+        ) {
           // Chat mode without enabled chat-mode tools: single API call, no tools
           const cachedPromptSnapshot = session?.promptSnapshot
           const chatPromptContextCacheKey = buildChatModePromptContextCacheKey({
@@ -4053,6 +4312,7 @@ export function useChatActions(): {
           const canReusePromptSnapshot =
             !!cachedPromptSnapshot &&
             cachedPromptSnapshot.mode === 'chat' &&
+            (cachedPromptSnapshot.planMode ?? false) === false &&
             (cachedPromptSnapshot.projectId ?? null) === (session?.projectId ?? null) &&
             (cachedPromptSnapshot.workingFolder ?? null) === (sessionWorkingFolder ?? null) &&
             (cachedPromptSnapshot.sshConnectionId ?? null) === (session?.sshConnectionId ?? null)
@@ -4109,7 +4369,10 @@ export function useChatActions(): {
           try {
             await runSimpleChat(sessionId, assistantMsgId, chatConfig, abortController.signal, {
               includeTrailingAssistantPlaceholder: !!existingAssistantMessage,
-              expectedUserMessage: expectedUserRequestMessage
+              expectedUserMessage: expectedUserRequestMessage,
+              requestContextTexts: turnRequestContextTexts,
+              slashCommand: requestSlashCommandContext,
+              systemCommand: requestSystemCommandContext
             })
           } finally {
             clearRequestRetryState(sessionId)
@@ -4151,7 +4414,6 @@ export function useChatActions(): {
           const finalToolDefs = filterTeamToolDefinitions(allToolDefs, settings.teamToolsEnabled)
           let promptCandidateToolDefs = finalToolDefs
 
-          const isPlanMode = useUIStore.getState().isPlanModeEnabled(sessionId)
           if (mode === 'acp') {
             promptCandidateToolDefs = promptCandidateToolDefs.filter((t) =>
               ACP_MODE_ALLOWED_TOOLS.has(t.name)
@@ -4260,7 +4522,8 @@ export function useChatActions(): {
               : desktopPluginSection
           }
 
-          // Channel session context: inject reply instructions when this session belongs to a channel
+          // Channel session context: pass reply instructions as request-scoped Native context.
+          let pluginChannelContext: SidecarPluginChannelContext | undefined
           if (promptAllowsToolContext && session?.pluginId && session?.externalChatId) {
             const channelMeta = useChannelStore
               .getState()
@@ -4276,19 +4539,15 @@ export function useChatActions(): {
               ])
             )
             const enabledTools = toolNames.filter((name) => channelMeta?.tools?.[name] !== false)
-            const senderLabel = session.pluginSenderName || session.pluginSenderId || 'unknown'
-            const channelCtx = [
-              `\n## Channel Auto-Reply Context`,
-              `Channel: ${channelMeta?.name ?? session.pluginId} (channel_id: \`${session.pluginId}\`)`,
-              chatId ? `Chat ID: \`${chatId}\`` : '',
-              `Chat Type: ${session.pluginChatType ?? 'unknown'}`,
-              `Sender: ${senderLabel} (id: ${session.pluginSenderId ?? 'unknown'})`,
-              enabledTools.length > 0 ? `Available channel tools: ${enabledTools.join(', ')}` : '',
-              `Reply naturally. If you need channel tools, use plugin_id="${session.pluginId}"${chatId ? ` and chat_id="${chatId}"` : ''}.`
-            ]
-              .filter(Boolean)
-              .join('\n')
-            userPrompt = userPrompt ? `${userPrompt}\n${channelCtx}` : channelCtx
+            pluginChannelContext = {
+              channelName: channelMeta?.name ?? session.pluginId,
+              channelId: session.pluginId,
+              ...(chatId ? { chatId } : {}),
+              ...(session.pluginChatType ? { chatType: session.pluginChatType } : {}),
+              ...(session.pluginSenderId ? { senderId: session.pluginSenderId } : {}),
+              ...(session.pluginSenderName ? { senderName: session.pluginSenderName } : {}),
+              availableTools: enabledTools
+            }
           }
 
           const promptContextCacheKey =
@@ -4300,6 +4559,7 @@ export function useChatActions(): {
                   environmentContext,
                   memorySnapshot,
                   sessionScope,
+                  planMode: isPlanMode,
                   hasWebSearch: promptToolDefs.some(
                     (tool) => tool.name === 'WebSearch' || tool.name === 'WebFetch'
                   ),
@@ -4318,6 +4578,7 @@ export function useChatActions(): {
           const canReusePromptSnapshot =
             !!cachedPromptSnapshot &&
             cachedPromptSnapshot.mode === mode &&
+            (cachedPromptSnapshot.planMode ?? false) === isPlanMode &&
             (cachedPromptSnapshot.projectId ?? null) === (session?.projectId ?? null) &&
             (cachedPromptSnapshot.workingFolder ?? null) === (sessionWorkingFolder ?? null) &&
             (cachedPromptSnapshot.sshConnectionId ?? null) === (session?.sshConnectionId ?? null) &&
@@ -4343,6 +4604,7 @@ export function useChatActions(): {
                     environmentContext,
                     memorySnapshot,
                     sessionScope,
+                    planMode: isPlanMode,
                     hasWebSearch: promptToolDefs.some(
                       (tool) => tool.name === 'WebSearch' || tool.name === 'WebFetch'
                     ),
@@ -4357,7 +4619,7 @@ export function useChatActions(): {
                     userRules: userPrompt || undefined,
                     toolDefs: promptToolDefs,
                     language: settings.language,
-                    planMode: false,
+                    planMode: isPlanMode,
                     hasActiveTeam: !!activeTeam,
                     activeTeam,
                     memorySnapshot,
@@ -4372,7 +4634,7 @@ export function useChatActions(): {
             })
             useChatStore.getState().setSessionPromptSnapshot(sessionId, {
               mode,
-              planMode: false,
+              planMode: isPlanMode,
               systemPrompt: agentSystemPrompt,
               toolDefs: promptToolDefs,
               projectId: session?.projectId,
@@ -4490,7 +4752,7 @@ export function useChatActions(): {
                   }
                 : null
 
-            // Build and inject a runtime reminder into the last user message
+            const requestContextTexts: string[] = []
             const sessionSnapshot = useChatStore.getState().sessions.find((s) => s.id === sessionId)
             const sessionMode = sessionSnapshot?.mode ?? uiStore.mode
             const shouldInjectContext =
@@ -4507,66 +4769,14 @@ export function useChatActions(): {
               })
 
               if (runtimeReminder) {
-                // Find the last user message and prepend the runtime reminder to its content
-                const lastUserIndex = messagesToSend.findLastIndex((m) => m.role === 'user')
-                if (lastUserIndex >= 0) {
-                  const lastUserMsg = messagesToSend[lastUserIndex]
-                  const contextBlock = { type: 'text' as const, text: runtimeReminder }
-
-                  let newContent: ContentBlock[]
-                  if (typeof lastUserMsg.content === 'string') {
-                    newContent = [
-                      contextBlock,
-                      { type: 'text' as const, text: lastUserMsg.content }
-                    ]
-                  } else {
-                    newContent = [contextBlock, ...lastUserMsg.content]
-                  }
-
-                  console.log('[Runtime Reminder] Injecting context into last user message:', {
-                    messageId: lastUserMsg.id,
-                    originalContentType: typeof lastUserMsg.content,
-                    newContentLength: newContent.length,
-                    contextPreview: runtimeReminder.substring(0, 100)
-                  })
-
-                  messagesToSend = [
-                    ...messagesToSend.slice(0, lastUserIndex),
-                    { ...lastUserMsg, content: newContent },
-                    ...messagesToSend.slice(lastUserIndex + 1)
-                  ]
-                }
+                requestContextTexts.push(runtimeReminder)
+                console.log('[Runtime Reminder] Passing request context to Native Worker:', {
+                  contextPreview: runtimeReminder.substring(0, 100)
+                })
               }
             }
+            requestContextTexts.push(...turnRequestContextTexts)
 
-            if (pendingPlanRevisionContext && source !== 'continue' && messagesToSend.length > 0) {
-              const lastUserIndex = messagesToSend.findLastIndex(
-                (message) => message.role === 'user'
-              )
-              if (lastUserIndex >= 0) {
-                const lastUserMsg = messagesToSend[lastUserIndex]
-                const revisionPrompt = buildPlanRevisionPrompt(
-                  pendingPlanRevisionContext.title,
-                  pendingPlanRevisionContext.filePath,
-                  effectiveResolvedCommand.userText || text
-                )
-                const revisionBlock = { type: 'text' as const, text: revisionPrompt }
-                const newContent =
-                  typeof lastUserMsg.content === 'string'
-                    ? [revisionBlock, { type: 'text' as const, text: lastUserMsg.content }]
-                    : [revisionBlock, ...lastUserMsg.content]
-
-                messagesToSend = [
-                  ...messagesToSend.slice(0, lastUserIndex),
-                  { ...lastUserMsg, content: newContent },
-                  ...messagesToSend.slice(lastUserIndex + 1)
-                ]
-              }
-            }
-
-            messagesToSend = prependTurnContextToLastUserMessage(messagesToSend, {
-              planMode: isPlanMode
-            })
             const agentRequestCacheShape = buildCacheShapeDebugInfo({
               systemPrompt: agentSystemPrompt,
               tools: effectiveToolDefs,
@@ -4589,6 +4799,11 @@ export function useChatActions(): {
               sessionMode: 'agent',
               planMode: isPlanMode,
               planModeAllowedTools: isPlanMode ? [...PLAN_MODE_ALLOWED_TOOLS] : undefined,
+              planRevision: requestPlanRevisionContext,
+              planExecution: requestPlanExecutionContext,
+              slashCommand: requestSlashCommandContext,
+              systemCommand: requestSystemCommandContext,
+              requestContextTexts,
               goalRunSource: source === 'continue' ? 'continue' : 'user_turn',
               teamToolsActive: settings.teamToolsEnabled && !!activeTeam,
               activeTeamName: activeTeam?.name,
@@ -4599,8 +4814,9 @@ export function useChatActions(): {
               pluginChatType: session?.pluginChatType,
               pluginSenderId: session?.pluginSenderId,
               pluginSenderName: session?.pluginSenderName,
+              pluginChannelContext,
               sshConnectionId: session?.sshConnectionId,
-              includeFullDebugBody: settings.devMode && shouldKeepFullDebugBody()
+              includeFullDebugBody: settings.devMode
             })
 
             const useSidecar = await canUseSidecarForAgentRun({
@@ -5594,13 +5810,16 @@ export function useChatActions(): {
 
                 case 'error': {
                   streamDeltaBuffer.flushNow()
-                  const errorMessage = normalizeContinuationErrorMessage(event.error.message)
+                  const errorContent = resolveRuntimeErrorContent(
+                    event.error.message,
+                    event.errorType
+                  )
                   console.error('[Agent Loop Error]', event.error)
-                  if (shouldSuppressTransientRuntimeError(errorMessage)) {
+                  if (shouldSuppressTransientRuntimeError(errorContent.message)) {
                     break
                   }
                   if (isSessionForeground(sessionId!)) {
-                    toast.error('Agent Error', { description: errorMessage })
+                    toast.error(errorContent.toastTitle, { description: errorContent.message })
                   } else {
                     const sessionTitle =
                       useChatStore.getState().sessions.find((item) => item.id === sessionId)
@@ -5608,16 +5827,20 @@ export function useChatActions(): {
                     useBackgroundSessionStore.getState().addInboxItem({
                       sessionId: sessionId!,
                       type: 'error',
-                      title: 'Runtime error',
-                      description: `${sessionTitle} · ${errorMessage}`
+                      title: errorContent.toastTitle,
+                      description: `${sessionTitle} · ${errorContent.message}`
                     })
                   }
                   appendRuntimeContentBlock(sessionId!, assistantMsgId, {
                     type: 'agent_error',
                     code: 'runtime_error',
-                    message: errorMessage,
-                    ...(event.errorType ? { errorType: event.errorType } : {}),
-                    ...(event.details ? { details: event.details } : {}),
+                    message: errorContent.message,
+                    ...((errorContent.errorType ?? event.errorType)
+                      ? { errorType: errorContent.errorType ?? event.errorType }
+                      : {}),
+                    ...((errorContent.details ?? event.details)
+                      ? { details: errorContent.details ?? event.details }
+                      : {}),
                     ...(event.stackTrace ? { stackTrace: event.stackTrace } : {})
                   })
                   break
@@ -5628,13 +5851,13 @@ export function useChatActions(): {
             streamDeltaBuffer?.flushNow()
             console.error('[Agent Loop Exception]', err)
             if (!abortController.signal.aborted) {
-              const errMsg = normalizeContinuationErrorMessage(
+              const errorContent = resolveRuntimeErrorContent(
                 err instanceof Error ? err.message : String(err)
               )
               console.error('[Agent Loop Exception]', err)
-              if (!shouldSuppressTransientRuntimeError(errMsg)) {
+              if (!shouldSuppressTransientRuntimeError(errorContent.message)) {
                 if (isSessionForeground(sessionId!)) {
-                  toast.error('Agent failed', { description: errMsg })
+                  toast.error(errorContent.toastTitle, { description: errorContent.message })
                 } else {
                   const sessionTitle =
                     useChatStore.getState().sessions.find((item) => item.id === sessionId)?.title ??
@@ -5642,11 +5865,17 @@ export function useChatActions(): {
                   useBackgroundSessionStore.getState().addInboxItem({
                     sessionId: sessionId!,
                     type: 'error',
-                    title: 'Runtime error',
-                    description: `${sessionTitle} · ${errMsg}`
+                    title: errorContent.toastTitle,
+                    description: `${sessionTitle} · ${errorContent.message}`
                   })
                 }
-                appendRuntimeTextDelta(sessionId!, assistantMsgId, `\n\n> **Error:** ${errMsg}`)
+                appendRuntimeErrorCard({
+                  sessionId: sessionId!,
+                  assistantMsgId,
+                  message: errorContent.message,
+                  errorType: errorContent.errorType,
+                  details: errorContent.details
+                })
               }
             }
           } finally {
@@ -5789,8 +6018,7 @@ export function useChatActions(): {
     // Stop the active session's agent
     const activeId = useChatStore.getState().activeSessionId
     if (activeId) {
-      stopSessionLocally(activeId)
-      emitSessionControlSync({ kind: 'stop_streaming', sessionId: activeId })
+      stopSessionStreaming(activeId)
     }
   }, [])
 
@@ -6110,11 +6338,18 @@ export function useChatActions(): {
       }
     }
 
+    const scopedConfig = await withWorkspacePromptCacheKey(config, {
+      projectId: compressSession?.projectId,
+      workingFolder: resolveSessionWorkingFolder(compressSession),
+      sshConnectionId: compressSession?.sshConnectionId,
+      target: compressSession?.sshConnectionId ? 'ssh' : 'local'
+    })
+
     try {
-      const preTokens = estimateManualCompressionInputTokens(messages, config)
+      const preTokens = estimateManualCompressionInputTokens(messages, scopedConfig)
       const { messages: compressed, result } = await runSidecarContextCompression({
         messages,
-        provider: config,
+        provider: scopedConfig,
         focusPrompt: focusPrompt || undefined,
         preTokens
       })
@@ -6151,44 +6386,6 @@ export function useChatActions(): {
     deleteMessage,
     manualCompressContext
   }
-}
-
-function buildPlanRevisionPrompt(
-  planTitle: string,
-  planFilePath: string | undefined,
-  feedback: string
-): string {
-  return [
-    `The plan **${planTitle}** was rejected.`,
-    planFilePath ? `Plan file: ${planFilePath}` : '',
-    feedback.trim()
-      ? `Feedback:\n${feedback.trim()}`
-      : 'Feedback:\nNo additional feedback provided.',
-    '',
-    'Please revise the current plan file accordingly with Write/Edit, then call ExitPlanMode.'
-  ]
-    .filter(Boolean)
-    .join('\n')
-}
-
-function buildPlanExecutionPrompt(
-  plan: Pick<Plan, 'filePath'>,
-  options?: { acp?: boolean }
-): string {
-  const basePrompt = plan.filePath
-    ? `Execute the approved plan from this file:\n${plan.filePath}`
-    : 'Execute the approved plan'
-
-  if (!options?.acp) {
-    return basePrompt
-  }
-
-  return [
-    basePrompt,
-    'Stay in ACP mode. Do not directly edit files or run implementation commands yourself.',
-    'Break the plan into concrete tasks, keep task tracking up to date, and delegate implementation through Task / sub-agents / teammates.',
-    'Review sub-agent outputs, continue delegation until the approved plan is completed, and report progress plus remaining risks after each wave.'
-  ].join('\n')
 }
 
 /**
@@ -6230,13 +6427,19 @@ export async function sendImplementPlan(planId: string): Promise<void> {
 
   try {
     await _sendMessageFn(
-      buildPlanExecutionPrompt(latestPlan, { acp: isAcpSession }),
+      'Implement the approved plan.',
       undefined,
       undefined,
       latestPlan.sessionId,
       undefined,
       undefined,
-      { skipPendingPlanRevision: true }
+      {
+        skipPendingPlanRevision: true,
+        planExecutionContext: {
+          filePath: latestPlan.filePath,
+          acp: isAcpSession
+        }
+      }
     )
 
     usePlanStore.getState().beginImplementation(planId)
@@ -6322,13 +6525,18 @@ export async function sendImplementPlanInNewSession(planId: string): Promise<voi
     }
 
     await _sendMessageFn(
-      buildPlanExecutionPrompt(latestPlan),
+      'Implement the approved plan.',
       undefined,
       undefined,
       newSessionId,
       undefined,
       undefined,
-      { skipPendingPlanRevision: true }
+      {
+        skipPendingPlanRevision: true,
+        planExecutionContext: {
+          filePath: latestPlan.filePath
+        }
+      }
     )
 
     usePlanStore.getState().beginImplementation(planId)
@@ -6357,6 +6565,8 @@ export function sendPlanRevision(planId: string, feedback: string): void {
 
   const plan = usePlanStore.getState().plans[planId]
   if (!plan) return
+  const revisionFeedback = feedback.trim()
+  if (!revisionFeedback) return
 
   // 1. Mark plan as rejected
   usePlanStore.getState().rejectPlan(planId)
@@ -6365,10 +6575,24 @@ export function sendPlanRevision(planId: string, feedback: string): void {
   // 2. Enter plan mode
   useUIStore.getState().enterPlanMode(plan.sessionId)
 
-  // 3. Build revision prompt and send directly
-  const prompt = buildPlanRevisionPrompt(plan.title, plan.filePath, feedback)
-
-  void _sendMessageFn(prompt)
+  // 3. Send only the user's feedback; Native Worker composes the hidden revision context.
+  void _sendMessageFn(
+    revisionFeedback,
+    undefined,
+    undefined,
+    plan.sessionId,
+    undefined,
+    undefined,
+    {
+      skipPendingPlanRevision: true,
+      enablePlanMode: true,
+      planRevisionContext: {
+        title: plan.title,
+        filePath: plan.filePath,
+        feedback: revisionFeedback
+      }
+    }
+  )
 }
 
 /**
@@ -6382,6 +6606,9 @@ async function runSimpleChat(
   options?: {
     includeTrailingAssistantPlaceholder?: boolean
     expectedUserMessage?: UnifiedMessage | null
+    requestContextTexts?: readonly string[]
+    slashCommand?: SidecarSlashCommandContext
+    systemCommand?: SidecarSystemCommandContext
   }
 ): Promise<void> {
   const chatStore = useChatStore.getState()
@@ -6398,9 +6625,6 @@ async function runSimpleChat(
     supportsVision: modelSupportsVision(chatModelConfig, config.type)
   })
   const isPlanMode = useUIStore.getState().isPlanModeEnabled(sessionId)
-  requestMessages = prependTurnContextToLastUserMessage(requestMessages, {
-    planMode: isPlanMode
-  })
   const simpleRequestCacheShape = buildCacheShapeDebugInfo({
     systemPrompt: config.systemPrompt ?? '',
     tools: [],
@@ -6408,7 +6632,8 @@ async function runSimpleChat(
   })
   const streamDeltaBuffer = createStreamDeltaBuffer(sessionId, assistantMsgId)
   const requestHasImages = requestMessages.some(messageContainsImage)
-  const useProviderTurnOnlyPath = useSettingsStore.getState().devMode || requestHasImages
+  const devMode = useSettingsStore.getState().devMode
+  const useProviderTurnOnlyPath = devMode || requestHasImages
   const nativeProvider = isNativeSidecarProviderConfig(config)
   const sidecarRequest = buildSidecarAgentRunRequest({
     messages: requestMessages,
@@ -6417,7 +6642,12 @@ async function runSimpleChat(
     sessionId,
     maxIterations: 1,
     forceApproval: false,
-    sessionMode: 'chat'
+    sessionMode: 'chat',
+    planMode: isPlanMode,
+    slashCommand: options?.slashCommand,
+    systemCommand: options?.systemCommand,
+    requestContextTexts: options?.requestContextTexts,
+    includeFullDebugBody: devMode
   })
 
   if (!sidecarRequest) {
@@ -6461,7 +6691,7 @@ async function runSimpleChat(
     supportsAgentRun,
     supportsProvider,
     requestHasImages,
-    devMode: useSettingsStore.getState().devMode,
+    devMode,
     useProviderTurnOnlyPath,
     useSidecar
   })
@@ -6492,6 +6722,11 @@ async function runSimpleChat(
         messages: requestMessages,
         tools: [],
         provider: config,
+        planMode: isPlanMode,
+        slashCommand: options?.slashCommand,
+        systemCommand: options?.systemCommand,
+        requestContextTexts: options?.requestContextTexts,
+        includeFullDebugBody: devMode,
         signal
       })
     }
@@ -6694,12 +6929,15 @@ async function runSimpleChat(
         }
         case 'error': {
           streamDeltaBuffer.flushNow()
-          const errorMessage = event.error?.message ?? 'Unknown error'
+          const errorContent = resolveRuntimeErrorContent(
+            readRuntimeErrorMessage(event.error),
+            readRuntimeErrorType(event.error, 'errorType' in event ? event.errorType : undefined)
+          )
           console.error('[Chat Error]', event.error)
-          if (shouldSuppressTransientRuntimeError(errorMessage)) {
+          if (shouldSuppressTransientRuntimeError(errorContent.message)) {
             break
           }
-          toast.error('Chat Error', { description: errorMessage })
+          toast.error(errorContent.toastTitle, { description: errorContent.message })
           if (!isSessionForeground(sessionId)) {
             const sessionTitle =
               useChatStore.getState().sessions.find((item) => item.id === sessionId)?.title ??
@@ -6707,10 +6945,17 @@ async function runSimpleChat(
             useBackgroundSessionStore.getState().addInboxItem({
               sessionId,
               type: 'error',
-              title: 'Runtime error',
-              description: `${sessionTitle} · ${errorMessage}`
+              title: errorContent.toastTitle,
+              description: `${sessionTitle} · ${errorContent.message}`
             })
           }
+          appendRuntimeErrorCard({
+            sessionId,
+            assistantMsgId,
+            message: errorContent.message,
+            errorType: errorContent.errorType,
+            details: errorContent.details
+          })
           break
         }
       }
@@ -6718,10 +6963,12 @@ async function runSimpleChat(
   } catch (err) {
     streamDeltaBuffer.flushNow()
     if (!signal.aborted) {
-      const errMsg = err instanceof Error ? err.message : String(err)
+      const errorContent = resolveRuntimeErrorContent(
+        err instanceof Error ? err.message : String(err)
+      )
       console.error('[Chat Exception]', err)
-      if (!shouldSuppressTransientRuntimeError(errMsg)) {
-        toast.error('Chat failed', { description: errMsg })
+      if (!shouldSuppressTransientRuntimeError(errorContent.message)) {
+        toast.error(errorContent.toastTitle, { description: errorContent.message })
         if (!isSessionForeground(sessionId)) {
           const sessionTitle =
             useChatStore.getState().sessions.find((item) => item.id === sessionId)?.title ??
@@ -6729,11 +6976,17 @@ async function runSimpleChat(
           useBackgroundSessionStore.getState().addInboxItem({
             sessionId,
             type: 'error',
-            title: 'Runtime error',
-            description: `${sessionTitle} · ${errMsg}`
+            title: errorContent.toastTitle,
+            description: `${sessionTitle} · ${errorContent.message}`
           })
         }
-        appendRuntimeTextDelta(sessionId, assistantMsgId, `\n\n> **Error:** ${errMsg}`)
+        appendRuntimeErrorCard({
+          sessionId,
+          assistantMsgId,
+          message: errorContent.message,
+          errorType: errorContent.errorType,
+          details: errorContent.details
+        })
       }
     }
   } finally {

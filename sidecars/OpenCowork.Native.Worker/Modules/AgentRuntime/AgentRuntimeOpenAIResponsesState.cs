@@ -124,6 +124,6 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
     private static class NativeGlobalPromptCacheKey
     {
-        public static readonly string Value = $"opencowork-{Guid.NewGuid():N}";
+        public static readonly string Value = $"ocw-global-{Guid.NewGuid():N}";
     }
 }

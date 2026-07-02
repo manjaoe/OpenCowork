@@ -167,11 +167,12 @@ export function LocalTerminal({
       } catch {
         // ignore terminal snapshot failures; live output listener remains active
       } finally {
-        if (disposed) return
-        snapshotLoaded = true
-        pendingChunks.sort((a, b) => a.seq - b.seq).forEach((chunk) => writeChunk(chunk))
-        pendingChunks.length = 0
-        scheduleFit()
+        if (!disposed) {
+          snapshotLoaded = true
+          pendingChunks.sort((a, b) => a.seq - b.seq).forEach((chunk) => writeChunk(chunk))
+          pendingChunks.length = 0
+          scheduleFit()
+        }
       }
     }
 

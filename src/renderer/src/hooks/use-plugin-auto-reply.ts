@@ -656,7 +656,7 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
     toolRegistry.getStableDefinitions(),
     settings.teamToolsEnabled
   )
-  let userPrompt = settings.systemPrompt || ''
+  const userRules = settings.systemPrompt || undefined
 
   const channelDescriptor = channelMeta
     ? useChannelStore.getState().getDescriptor(channelMeta.type)
@@ -668,20 +668,6 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
     ])
   )
   const enabledTools = channelToolNames.filter((name) => channelMeta?.tools?.[name] !== false)
-
-  const channelCtx = [
-    `\n## Channel Auto-Reply Context`,
-    `Channel: ${channelMeta?.name ?? pluginType} (channel_id: \`${pluginId}\`)`,
-    `Chat ID: \`${chatId}\``,
-    `Chat Type: ${task.chatType ?? 'unknown'}`,
-    `Sender: ${task.senderName || task.senderId} (id: ${task.senderId})`,
-    enabledTools.length > 0 ? `Available channel tools: ${enabledTools.join(', ')}` : '',
-    `Reply directly to this incoming message in a natural way.`,
-    `If you need channel tools, use plugin_id="${pluginId}" and chat_id="${chatId}".`
-  ]
-    .filter(Boolean)
-    .join('\n')
-  userPrompt = userPrompt ? `${userPrompt}\n${channelCtx}` : channelCtx
 
   const sessionScope: SessionMemoryScope = 'channel'
   const memorySnapshot = await loadLayeredMemorySnapshot(ipcClient, {
@@ -701,7 +687,7 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
   })
   const promptContextCacheKey = buildSystemPromptContextCacheKey({
     language: settings.language,
-    userRules: userPrompt,
+    userRules,
     environmentContext,
     memorySnapshot
   })
@@ -726,7 +712,7 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
       mode: 'cowork',
       workingFolder: session.workingFolder,
       sessionId,
-      userRules: userPrompt,
+      userRules,
       toolDefs: allToolDefs,
       language: settings.language,
       memorySnapshot,
@@ -986,6 +972,16 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
       pluginChatType: task.chatType,
       pluginSenderId: task.senderId,
       pluginSenderName: task.senderName,
+      pluginChannelContext: {
+        channelName: channelMeta?.name ?? pluginType,
+        channelId: pluginId,
+        chatId,
+        chatType: task.chatType,
+        senderId: task.senderId,
+        senderName: task.senderName,
+        availableTools: enabledTools,
+        autoReply: true
+      },
       sshConnectionId: session.sshConnectionId
     })
     if (!sidecarRequest) {

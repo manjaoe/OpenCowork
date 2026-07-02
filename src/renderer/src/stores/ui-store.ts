@@ -939,8 +939,7 @@ export const useUIStore = create<UIStore>()(
         }),
       setLeftSidebarWidth: (width) => set({ leftSidebarWidth: clampLeftSidebarWidth(width) }),
       conversationPanelFullWidth: false,
-      setConversationPanelFullWidth: (fullWidth) =>
-        set({ conversationPanelFullWidth: fullWidth }),
+      setConversationPanelFullWidth: (fullWidth) => set({ conversationPanelFullWidth: fullWidth }),
       rightPanelOpen: false,
       toggleRightPanel: () =>
         set((state) => {
@@ -1113,12 +1112,15 @@ export const useUIStore = create<UIStore>()(
         }),
       ensureSubAgentTab: (toolUseId, inlineText, title, requestedSessionId) =>
         set((state) => {
-          const tabId = toolUseId ? `subagent:${toolUseId}` : 'subagent:overview'
           const sessionId =
             normalizeScopeId(requestedSessionId) ??
             state.activeScopedSessionId ??
             useChatStore.getState().activeSessionId ??
             null
+          const tabScopeId = sessionId ?? 'global'
+          const tabId = toolUseId
+            ? `subagent:${tabScopeId}:${toolUseId}`
+            : `subagent:${tabScopeId}:overview`
           const existing = state.rightPanelTabs.find((tab) => tab.id === tabId)
           const tab: RightPanelTabInstance = existing
             ? {
