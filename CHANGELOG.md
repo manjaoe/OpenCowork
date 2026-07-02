@@ -9,8 +9,6 @@ All notable changes to this project will be documented in this file.
 - Removed BOM character from package.json for better compatibility with various tools and parsers.
 - Added `pointer-events-none` to user message locator container to prevent it from intercepting clicks on underlying UI elements.
 
-## [1.0.3] - 2026-07-02
-
 ### Changed
 
 - Optimized streaming and debug overhead by implementing on-demand caching and batch refresh instead of full recalculation on every increment, reducing O(n²) complexity in main and sidecar processes.

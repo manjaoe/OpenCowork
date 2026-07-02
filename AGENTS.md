@@ -55,7 +55,7 @@ npm run format       # Prettier (single quotes, no semicolons, 100-col width)
 npm run postinstall  # Rebuild native modules (better-sqlite3, robotjs, ssh2, node-pty) for Electron
 ```
 
-**CI:** GitHub Actions (`build.yml`) builds on push to release tag across Windows (x64, arm64), macOS (arm64, amd64), and Linux (x64, arm64). Artifacts uploaded to the GitHub Release.
+**CI:** GitHub Actions (`build.yml`) builds on release publish across Windows (x64, arm64), macOS (arm64, amd64), and Linux (x64, arm64). Artifacts uploaded to the GitHub Release. Manual dispatch also supported for debugging.
 
 ## Coding Style & Naming Conventions
 
