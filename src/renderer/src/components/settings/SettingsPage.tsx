@@ -86,6 +86,7 @@ import { AutoMemoryPanel } from '@renderer/components/memory/AutoMemoryPanel'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import {
+  isMissingFileErrorMessage,
   joinFsPath,
   readTextFile,
   resolveGlobalMemoryHomePath
@@ -243,10 +244,6 @@ function createInitialGlobalMemoryFiles(): Record<GlobalMemoryTabId, GlobalMemor
       lastSavedAt: null
     }
   }
-}
-
-function isMissingFileError(error: string): boolean {
-  return error.includes('ENOENT')
 }
 
 function getSoulLabelTranslationKey(value: string): string {
@@ -1763,12 +1760,12 @@ function MemoryPanel(): React.JSX.Element {
           const descriptor = descriptors[id]
           const { content, error } = await readTextFile(ipcClient, descriptor.path)
 
-          if (error && !isMissingFileError(error)) {
+          if (error && !isMissingFileErrorMessage(error)) {
             throw new Error(`${descriptor.filename}: ${error}`)
           }
 
           const normalized =
-            error && isMissingFileError(error)
+            error && isMissingFileErrorMessage(error)
               ? id === 'soul'
                 ? defaultSoulContent
                 : DEFAULT_GLOBAL_MEMORY_TEMPLATES[id]
@@ -1782,7 +1779,7 @@ function MemoryPanel(): React.JSX.Element {
               path: descriptor.path,
               savedContent: normalized,
               draftContent: normalized,
-              missingFile: Boolean(error && isMissingFileError(error)),
+              missingFile: Boolean(error && isMissingFileErrorMessage(error)),
               lastSavedAt: null
             }
           ] as const

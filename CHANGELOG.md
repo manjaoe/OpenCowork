@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2026-07-02
+
+### Fixed
+
+- Created default global memory files during first-run initialization so missing `SOUL.md`, `USER.md`, `MEMORY.md`, `memory_summary.md`, and `raw_memories.md` no longer surface as startup/onboarding errors.
+- Broadened missing-file detection for Windows and native-worker messages such as `Could not find file`, allowing onboarding, settings, and memory fallback paths to create files instead of failing.
+- Made local `MemoryRead` create missing memory files from templates before reading them.
+- Treated missing OpenAI Responses `previous_response_id` replay errors as recoverable and retried with full sanitized input.
+
+### Security
+
+- Upgraded the native worker SQLitePCLRaw bundle to `3.0.3`, pulling `SourceGear.sqlite3 3.50.4.5` and clearing the `SQLitePCLRaw.lib.e_sqlite3` vulnerability warning.
+
 ## [1.0.4] - 2026-07-02
 
 ### Fixed

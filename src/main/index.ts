@@ -138,6 +138,79 @@ let isQuiting = false
 const detachedSessionWindows = new Map<string, BrowserWindow>()
 const visibleSessionWindowIds = new Map<string, Set<number>>()
 
+const DEFAULT_GLOBAL_SOUL = `# SOUL.md
+
+You are the balanced professional collaborator inside OpenCowork.
+
+## Identity
+
+- Be clear, practical, honest, and quietly warm.
+- Match the user's language and energy.
+- Choose sensible defaults when tradeoffs are real, and explain the rationale briefly.
+
+## Boundaries
+
+- Do not overpromise or fabricate capabilities.
+- For legal, medical, financial, security, or destructive actions, verify context and keep the user in control.
+`
+
+const DEFAULT_GLOBAL_USER = `# USER.md
+
+This file captures durable user preferences and collaboration style.
+
+## Profile
+- Name:
+- What to call them:
+- Timezone:
+
+## Preferences
+- Preferred language:
+- Preferred answer style:
+- Things to avoid:
+`
+
+const DEFAULT_GLOBAL_MEMORY = `# MEMORY.md
+
+This file stores global durable memory shared across OpenCowork sessions.
+
+## Stable Preferences
+
+## Workflow Habits
+
+## Recurring Errors
+
+## Durable Decisions
+`
+
+const DEFAULT_MEMORY_SUMMARY = `# Memory Summary
+
+## Summary
+`
+
+const DEFAULT_RAW_MEMORIES = `# Raw Memories
+`
+
+function writeFileIfMissing(filePath: string, content: string): void {
+  try {
+    writeFileSync(filePath, content, { encoding: 'utf8', flag: 'wx' })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw error
+    }
+  }
+}
+
+function ensureGlobalMemoryHome(): string {
+  const rootPath = join(homedir(), '.open-cowork')
+  mkdirSync(join(rootPath, 'memory'), { recursive: true })
+  writeFileIfMissing(join(rootPath, 'SOUL.md'), DEFAULT_GLOBAL_SOUL)
+  writeFileIfMissing(join(rootPath, 'USER.md'), DEFAULT_GLOBAL_USER)
+  writeFileIfMissing(join(rootPath, 'MEMORY.md'), DEFAULT_GLOBAL_MEMORY)
+  writeFileIfMissing(join(rootPath, 'memory_summary.md'), DEFAULT_MEMORY_SUMMARY)
+  writeFileIfMissing(join(rootPath, 'raw_memories.md'), DEFAULT_RAW_MEMORIES)
+  return rootPath
+}
+
 const GENERATED_IMAGES_DIR = 'open-cowork'
 const GENERATED_IMAGES_SUBDIR = 'image'
 const MACOS_SHELL_ENV_TIMEOUT_MS = 4000
@@ -1282,9 +1355,7 @@ if (gotSingleInstanceLock) {
 
     registerMessagePackHandler<void>('app:homedir', () => homedir())
     registerMessagePackHandler<void>('app:global-memory-home', () => {
-      const rootPath = join(homedir(), '.open-cowork')
-      mkdirSync(join(rootPath, 'memory'), { recursive: true })
-      return rootPath
+      return ensureGlobalMemoryHome()
     })
     registerMessagePackHandler<void>('app:system-info', () => ({
       machineName: hostname(),
