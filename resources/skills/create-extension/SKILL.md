@@ -1,14 +1,15 @@
 ---
 name: create-extension
-description: Create or modify OpenCowork Custom Extensions. Use when the user asks to build a custom extension/plugin for OpenCowork that adds Agent tools, declarative HTTP tools, sandboxed JavaScript handlers, extension configuration fields, network allowlists, or custom response UI renderers.
+description: Create or modify OpenCowork Custom Extensions. Use when the user asks to build a custom extension/plugin for OpenCowork that adds Agent tools, declarative HTTP tools, sandboxed JavaScript handlers, extension configuration fields, network allowlists, or custom response UI renderers, or to bundle skills, sub-agents, slash commands, MCP servers, or persistent state into one installable extension.
 ---
 
 # Create Extension
 
-Create OpenCowork V1 Custom Extensions, not Codex marketplace plugins, App plugins, or message
-channel plugins.
+Create OpenCowork Custom Extensions, not App plugins or message channel plugins.
 
-Before creating or changing an extension, read `references/extension-v1.md`.
+Before creating or changing an extension, read `references/extension-v1.md`. When the extension
+should also bundle skills, sub-agents, slash commands, MCP servers, or persistent state,
+additionally read `references/extension-v2.md`.
 
 ## Workflow
 

@@ -2,9 +2,15 @@
   "schemaVersion": 1,
   "id": "my-coffee",
   "name": "My Coffee",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "瑞幸咖啡到店自提下单插件。通过官方 MCP 网关查询门店、搜索商品、预览订单、创建支付二维码、查询订单和取消订单。",
   "entry": "index.js",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "My Coffee",
+    "category": "Lifestyle",
+    "defaultPrompt": ["帮我点一杯生椰拿铁", "查一下我最近的瑞幸订单"]
+  },
   "configSchema": [
     {
       "key": "luckinToken",

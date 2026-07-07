@@ -135,6 +135,7 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'extension:storage-get',
   'extension:storage-set',
   'extension:storage-delete',
+  'extension:aggregate-info',
   'mcp:list',
   'mcp:add',
   'mcp:update',

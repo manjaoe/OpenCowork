@@ -1,19 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  CheckCircle2,
-  CircleAlert,
-  Globe,
-  Image,
-  MonitorSmartphone,
-  Palette,
-  Puzzle,
-  Trash2
-} from 'lucide-react'
+import { Globe, Image, MonitorSmartphone, Puzzle, Trash2 } from 'lucide-react'
 import { Switch } from '@renderer/components/ui/switch'
 import { Button } from '@renderer/components/ui/button'
 import { Textarea } from '@renderer/components/ui/textarea'
-import { Badge } from '@renderer/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -29,13 +19,11 @@ import {
 } from '@renderer/stores/provider-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { resolvePluginsForProject, useAppPluginStore } from '@renderer/stores/app-plugin-store'
-import { resolveEffectiveActiveMcpIds, useMcpStore } from '@renderer/stores/mcp-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { toast } from 'sonner'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { parseBrowserDomainList } from '@renderer/lib/app-plugin/browser-access'
-import { refreshDynamicToolCatalog } from '@renderer/lib/tools/dynamic-tool-catalog'
 import {
   APP_PLUGIN_DESCRIPTORS,
   BROWSER_CLICK_TOOL_NAME,
@@ -54,7 +42,6 @@ import {
   DESKTOP_WAIT_TOOL_NAME,
   IMAGE_GENERATE_TOOL_NAME,
   IMAGE_PLUGIN_ID,
-  PRODUCT_DESIGN_PLUGIN_ID,
   isAppPluginEnabledByDefault,
   type AppPluginDescriptor,
   type AppPluginId,
@@ -114,10 +101,6 @@ function BrowserPluginIcon(): React.JSX.Element {
   return <Globe className="size-4" />
 }
 
-function ProductDesignPluginIcon(): React.JSX.Element {
-  return <Palette className="size-4" />
-}
-
 function getPluginIcon(id: AppPluginId): React.JSX.Element {
   if (id === IMAGE_PLUGIN_ID) {
     return <ImagePluginIcon />
@@ -127,9 +110,6 @@ function getPluginIcon(id: AppPluginId): React.JSX.Element {
   }
   if (id === DESKTOP_CONTROL_PLUGIN_ID) {
     return <DesktopControlPluginIcon />
-  }
-  if (id === PRODUCT_DESIGN_PLUGIN_ID) {
-    return <ProductDesignPluginIcon />
   }
   return <Puzzle className="size-4" />
 }
@@ -158,43 +138,7 @@ function getPluginState(options: {
 function getToolStatusDescriptionKey(descriptor: AppPluginDescriptor): string {
   if (descriptor.requiresModelConfig) return 'plugin.toolStatusDesc'
   if (descriptor.id === BROWSER_PLUGIN_ID) return 'plugin.toolStatusDescBrowser'
-  if (descriptor.id === PRODUCT_DESIGN_PLUGIN_ID) return 'plugin.toolStatusDescProductDesign'
   return 'plugin.toolStatusDescDesktop'
-}
-
-function ProductDesignDependencyRow({
-  label,
-  description,
-  ready,
-  optional = false
-}: {
-  label: string
-  description: string
-  ready: boolean
-  optional?: boolean
-}): React.JSX.Element {
-  const { t } = useTranslation('settings')
-  const tone = ready ? 'text-emerald-600' : optional ? 'text-amber-600' : 'text-muted-foreground'
-  return (
-    <div className="flex items-start gap-3 rounded-lg border bg-muted/10 p-3">
-      {ready ? (
-        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-      ) : (
-        <CircleAlert className={`mt-0.5 size-4 shrink-0 ${tone}`} />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-      </div>
-      <Badge variant={ready ? 'secondary' : 'outline'} className="shrink-0 text-[10px]">
-        {ready
-          ? t('plugin.productDesign.ready')
-          : optional
-            ? t('plugin.productDesign.optional')
-            : t('plugin.productDesign.notReady')}
-      </Badge>
-    </div>
-  )
 }
 
 export function AppPluginPanel(): React.JSX.Element {
@@ -207,22 +151,12 @@ export function AppPluginPanel(): React.JSX.Element {
   const pluginsByProject = useAppPluginStore((state) => state.pluginsByProject)
   const updatePlugin = useAppPluginStore((state) => state.updatePlugin)
   const togglePluginEnabled = useAppPluginStore((state) => state.togglePluginEnabled)
-  const isImageToolAvailable = useAppPluginStore((state) =>
-    state.isImageToolAvailable(activeProjectId)
-  )
-  const isBrowserToolAvailable = useAppPluginStore((state) =>
-    state.isBrowserToolAvailable(activeProjectId)
-  )
   const browserUserDataReuseEnabled = useSettingsStore((state) => state.browserUserDataReuseEnabled)
   const browserUserDataSource = useSettingsStore((state) => state.browserUserDataSource)
-  const webSearchEnabled = useSettingsStore((state) => state.webSearchEnabled)
   const updateSettings = useSettingsStore((state) => state.updateSettings)
   const providers = useProviderStore((state) => state.providers)
   const activeImageProviderId = useProviderStore((state) => state.activeImageProviderId)
   const activeImageModelId = useProviderStore((state) => state.activeImageModelId)
-  const mcpServers = useMcpStore((state) => state.servers)
-  const mcpStatuses = useMcpStore((state) => state.serverStatuses)
-  const activeMcpIdsByProject = useMcpStore((state) => state.activeMcpIdsByProject)
 
   const imageProviderGroups = useMemo(
     () =>
@@ -279,32 +213,6 @@ export function AppPluginPanel(): React.JSX.Element {
   })
   const browserAllowedDomainText = (selectedPlugin.browserAllowedDomains ?? []).join('\n')
   const browserBlockedDomainText = (selectedPlugin.browserBlockedDomains ?? []).join('\n')
-  const activeMcpIds = resolveEffectiveActiveMcpIds({
-    projectId: activeProjectId,
-    activeMcpIdsByProject,
-    servers: mcpServers,
-    serverStatuses: mcpStatuses
-  })
-  const hasShareTarget = mcpServers.some((server) => {
-    if (!server.enabled || mcpStatuses[server.id] !== 'connected') return false
-    if (!activeMcpIds.includes(server.id)) return false
-    return /site|vercel|netlify|cloudflare|deploy|host/i.test(
-      `${server.name} ${server.description ?? ''}`
-    )
-  })
-  const productDesignWorkflowLabels = [
-    'getContext',
-    'ideate',
-    'prototype',
-    'urlToCode',
-    'imageToCode',
-    'audit',
-    'research',
-    'designQa',
-    'share',
-    'userContext'
-  ]
-  const productDesignPromptLabels = ['getStarted', 'threeDirections', 'cloneUrl']
 
   useEffect(() => {
     let cancelled = false
@@ -347,28 +255,8 @@ export function AppPluginPanel(): React.JSX.Element {
     }
   }
 
-  const handlePluginEnabledChange = async (checked: boolean): Promise<void> => {
+  const handlePluginEnabledChange = (checked: boolean): void => {
     if (!selectedPlugin || checked === selectedPlugin.enabled) return
-
-    if (selectedPlugin.id === PRODUCT_DESIGN_PLUGIN_ID && checked) {
-      try {
-        const result = (await ipcClient.invoke(IPC.SKILLS_ENSURE_BUILTIN, {
-          name: PRODUCT_DESIGN_PLUGIN_ID
-        })) as { success: boolean; error?: string }
-
-        if (!result.success) {
-          toast.error(t('plugin.productDesign.ensureFailed'), { description: result.error })
-          return
-        }
-
-        await refreshDynamicToolCatalog()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        toast.error(t('plugin.productDesign.ensureFailed'), { description: message })
-        return
-      }
-    }
-
     togglePluginEnabled(selectedPlugin.id)
   }
 
@@ -450,73 +338,10 @@ export function AppPluginPanel(): React.JSX.Element {
                 </div>
                 <Switch
                   checked={selectedPlugin.enabled}
-                  onCheckedChange={(checked) => void handlePluginEnabledChange(checked)}
+                  onCheckedChange={handlePluginEnabledChange}
                 />
               </div>
             </section>
-
-            {selectedPlugin.id === PRODUCT_DESIGN_PLUGIN_ID ? (
-              <section className="space-y-4 rounded-xl border p-4">
-                <div>
-                  <p className="text-sm font-medium">{t('plugin.productDesign.workflowTitle')}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('plugin.productDesign.workflowDesc')}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {productDesignWorkflowLabels.map((label) => (
-                    <Badge key={label} variant="outline" className="text-[11px]">
-                      {t(`plugin.productDesign.workflows.${label}`)}
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <ProductDesignDependencyRow
-                    label={t('plugin.productDesign.dependencies.skill')}
-                    description={t('plugin.productDesign.dependencies.skillDesc')}
-                    ready={selectedPlugin.enabled}
-                  />
-                  <ProductDesignDependencyRow
-                    label={t('plugin.productDesign.dependencies.image')}
-                    description={t('plugin.productDesign.dependencies.imageDesc')}
-                    ready={isImageToolAvailable}
-                  />
-                  <ProductDesignDependencyRow
-                    label={t('plugin.productDesign.dependencies.browser')}
-                    description={t('plugin.productDesign.dependencies.browserDesc')}
-                    ready={isBrowserToolAvailable}
-                  />
-                  <ProductDesignDependencyRow
-                    label={t('plugin.productDesign.dependencies.webSearch')}
-                    description={t('plugin.productDesign.dependencies.webSearchDesc')}
-                    ready={webSearchEnabled}
-                    optional
-                  />
-                  <ProductDesignDependencyRow
-                    label={t('plugin.productDesign.dependencies.share')}
-                    description={t('plugin.productDesign.dependencies.shareDesc')}
-                    ready={hasShareTarget}
-                    optional
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">{t('plugin.productDesign.promptsTitle')}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {productDesignPromptLabels.map((label) => (
-                      <span
-                        key={label}
-                        className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
-                      >
-                        {t(`plugin.productDesign.prompts.${label}`)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            ) : null}
 
             {selectedDescriptor.requiresModelConfig ? (
               <section className="space-y-3 rounded-xl border p-4">
@@ -795,36 +620,34 @@ export function AppPluginPanel(): React.JSX.Element {
               </section>
             ) : null}
 
-            {selectedPlugin.id !== PRODUCT_DESIGN_PLUGIN_ID ? (
-              <section className="space-y-3 rounded-xl border p-4">
-                <div>
-                  <p className="text-sm font-medium">{t('plugin.toolStatus')}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t(getToolStatusDescriptionKey(selectedDescriptor))}
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  {selectedDescriptor.toolNames.map((toolName) => (
-                    <div key={toolName} className="rounded-lg border bg-muted/10 p-3">
-                      <p className="text-sm font-medium">{toolName}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t(`plugin.status.${activeState}`)}
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {t(`plugin.toolArgsMap.${toolName}`)}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                        {TOOL_ARG_LABELS[toolName].map((label) => (
-                          <span key={label} className="rounded-full bg-muted px-2 py-0.5">
-                            {label}
-                          </span>
-                        ))}
-                      </div>
+            <section className="space-y-3 rounded-xl border p-4">
+              <div>
+                <p className="text-sm font-medium">{t('plugin.toolStatus')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t(getToolStatusDescriptionKey(selectedDescriptor))}
+                </p>
+              </div>
+              <div className="space-y-3">
+                {selectedDescriptor.toolNames.map((toolName) => (
+                  <div key={toolName} className="rounded-lg border bg-muted/10 p-3">
+                    <p className="text-sm font-medium">{toolName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t(`plugin.status.${activeState}`)}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {t(`plugin.toolArgsMap.${toolName}`)}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                      {TOOL_ARG_LABELS[toolName].map((label) => (
+                        <span key={label} className="rounded-full bg-muted px-2 py-0.5">
+                          {label}
+                        </span>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
 
             <Separator />
 

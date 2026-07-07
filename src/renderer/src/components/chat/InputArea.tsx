@@ -137,7 +137,6 @@ import {
   APP_PLUGIN_DESCRIPTORS,
   BROWSER_PLUGIN_ID,
   IMAGE_PLUGIN_ID,
-  PRODUCT_DESIGN_PLUGIN_ID,
   type AppPluginId
 } from '@renderer/lib/app-plugin/types'
 import {
@@ -1365,14 +1364,6 @@ function ComposerRuntimeStatus({
 }
 
 function getAppPluginPromptContent(pluginId: AppPluginId): string {
-  if (pluginId === PRODUCT_DESIGN_PLUGIN_ID) {
-    return [
-      `[Skill: ${PRODUCT_DESIGN_PLUGIN_ID}]`,
-      'Use the Product Design workflow plugin for this request.',
-      'Start by loading the product-design skill, confirm the design brief when needed, use saved Product Design context when relevant, and follow the workflow guardrails before building or handing off.'
-    ].join('\n')
-  }
-
   if (pluginId === IMAGE_PLUGIN_ID) {
     return [
       `[Plugin: ${pluginId}]`,
@@ -1589,6 +1580,13 @@ export function InputArea({
   const [fileSearchResults, setFileSearchResults] = React.useState<FileSearchItem[]>([])
   const [fileSearchLoading, setFileSearchLoading] = React.useState(false)
   const [selectedFileSearchIndex, setSelectedFileSearchIndex] = React.useState(0)
+  // Chromium re-dispatches a synthetic mousemove at the resting pointer position
+  // after DOM changes under it (e.g. arrow-key selection re-renders the list),
+  // which would steal the selection back to the hovered item. Only treat
+  // mousemove as hover intent when the pointer actually moved.
+  const flyoutPointerRef = React.useRef<{ x: number; y: number } | null>(null)
+  const slashListRef = React.useRef<HTMLDivElement | null>(null)
+  const fileListRef = React.useRef<HTMLDivElement | null>(null)
   const [attachedImages, setAttachedImages] = React.useState<ImageAttachment[]>([])
   const [previewImage, setPreviewImage] = React.useState<ImageAttachment | null>(null)
   const [pendingImageReads, setPendingImageReads] = React.useState(0)
@@ -2449,6 +2447,20 @@ export function InputArea({
   React.useEffect(() => {
     setSelectedFileSearchIndex(0)
   }, [fileQuery])
+
+  // Keep the keyboard-selected item visible; a no-op for hover-driven changes
+  // since hovered items are visible by definition.
+  React.useEffect(() => {
+    if (!slashMenuOpen) return
+    const items = slashListRef.current?.querySelectorAll('button')
+    items?.[selectedSlashIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [selectedSlashIndex, slashMenuOpen])
+
+  React.useEffect(() => {
+    if (!fileMenuOpen) return
+    const items = fileListRef.current?.querySelectorAll('button')
+    items?.[selectedFileSearchIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [selectedFileSearchIndex, fileMenuOpen])
 
   React.useEffect(() => {
     if (!fileMenuOpen) {
@@ -4347,7 +4359,7 @@ export function InputArea({
                       @{fileQuery || ''}
                     </span>
                   </div>
-                  <div className="max-h-64 overflow-y-auto p-1.5">
+                  <div ref={fileListRef} className="max-h-64 overflow-y-auto p-1.5">
                     {!workingFolder ? (
                       <button
                         type="button"
@@ -4387,6 +4399,14 @@ export function InputArea({
                                 ? 'bg-accent text-accent-foreground'
                                 : 'hover:bg-muted/50 text-foreground'
                             }`}
+                            onMouseMove={(event) => {
+                              const prev = flyoutPointerRef.current
+                              if (prev?.x === event.clientX && prev?.y === event.clientY) return
+                              flyoutPointerRef.current = { x: event.clientX, y: event.clientY }
+                              if (index !== selectedFileSearchIndex) {
+                                setSelectedFileSearchIndex(index)
+                              }
+                            }}
                             onMouseDown={(event) => {
                               event.preventDefault()
                               insertSelectedFile(file.path)
@@ -4422,7 +4442,7 @@ export function InputArea({
                       /{slashQuery ?? ''}
                     </span>
                   </div>
-                  <div className="max-h-64 overflow-y-auto p-1">
+                  <div ref={slashListRef} className="max-h-64 overflow-y-auto p-1">
                     {slashSuggestionsLoading ? (
                       <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                         <Spinner className="size-3.5" />
@@ -4450,6 +4470,14 @@ export function InputArea({
                                 ? 'bg-accent text-accent-foreground'
                                 : 'hover:bg-muted/50 text-foreground'
                             }`}
+                            onMouseMove={(event) => {
+                              const prev = flyoutPointerRef.current
+                              if (prev?.x === event.clientX && prev?.y === event.clientY) return
+                              flyoutPointerRef.current = { x: event.clientX, y: event.clientY }
+                              if (index !== selectedSlashIndex) {
+                                setSelectedSlashIndex(index)
+                              }
+                            }}
                             onMouseDown={(event) => {
                               event.preventDefault()
                               applySlashSuggestion(item)

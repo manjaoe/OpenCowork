@@ -27,6 +27,12 @@ function createDefaultPlugin(id: AppPluginId): AppPluginInstance {
 
 const GLOBAL_PROJECT_ID = '__global__'
 
+const KNOWN_PLUGIN_IDS = new Set<string>(APP_PLUGIN_DESCRIPTORS.map((descriptor) => descriptor.id))
+
+function isKnownPlugin(plugin: AppPluginInstance): boolean {
+  return KNOWN_PLUGIN_IDS.has(plugin.id)
+}
+
 function sanitizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value
@@ -75,7 +81,8 @@ function normalizePluginOverride(plugin: AppPluginInstance): AppPluginInstance {
 }
 
 function provisionBuiltinPlugins(plugins: AppPluginInstance[]): AppPluginInstance[] {
-  const next = plugins.map((plugin) => ({ ...plugin }))
+  // Drop persisted instances for removed plugin ids (e.g. the retired product design plugin).
+  const next = plugins.filter(isKnownPlugin).map((plugin) => ({ ...plugin }))
 
   for (const descriptor of APP_PLUGIN_DESCRIPTORS) {
     const existing = next.find((plugin) => plugin.id === descriptor.id)

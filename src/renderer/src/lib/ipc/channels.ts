@@ -106,6 +106,7 @@ export const IPC = {
   EXTENSION_STORAGE_GET: 'extension:storage-get',
   EXTENSION_STORAGE_SET: 'extension:storage-set',
   EXTENSION_STORAGE_DELETE: 'extension:storage-delete',
+  EXTENSION_AGGREGATE_INFO: 'extension:aggregate-info',
 
   // SOUL Market
   SOULS_BUILTIN_LIST: 'souls:builtin-list',

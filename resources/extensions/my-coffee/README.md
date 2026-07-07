@@ -34,3 +34,6 @@ Create a token from <https://open.lkcoffee.com/mcp>.
 - Tools return `ui.kind = "component"` with component names declared in `extension.json`.
   OpenCowork loads the matching HTML file from `components/` and passes `ui.props` through the
   `extension-props` event.
+- The bundled `skills/luckin-ordering` skill teaches the Agent the ordering workflow (store
+  selection, SKU customization, the preview-before-create gate). It is synced into the user
+  skills directory while the extension is enabled and removed when it is disabled.

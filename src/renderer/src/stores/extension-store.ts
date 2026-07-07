@@ -6,6 +6,24 @@ import { ipcStorage } from '@renderer/lib/ipc/ipc-storage'
 import { useChatStore } from '@renderer/stores/chat-store'
 import type { ExtensionInstance } from '../../../shared/extension-types'
 
+export interface ExtensionAggregateInfo {
+  declared: {
+    skills: number
+    agents: number
+    commands: number
+    mcpServers: number
+    state: boolean
+  }
+  workflows: string[]
+  synced: {
+    skills: string[]
+    agents: number
+    commands: number
+    mcpServers: string[]
+    syncedAt: number
+  } | null
+}
+
 interface ExtensionStore {
   extensions: ExtensionInstance[]
   loaded: boolean
@@ -15,7 +33,8 @@ interface ExtensionStore {
   updateExtension: (
     id: string,
     patch: { enabled?: boolean; config?: Record<string, string> }
-  ) => Promise<{ success: boolean; error?: string }>
+  ) => Promise<{ success: boolean; error?: string; syncWarnings?: string[] }>
+  getAggregateInfo: (id: string) => Promise<ExtensionAggregateInfo | null>
   removeExtension: (id: string) => Promise<{ success: boolean; error?: string }>
   openExtensionFolder: (id: string) => Promise<{ success: boolean; error?: string }>
   toggleActiveExtension: (id: string, projectId?: string | null) => void
@@ -93,11 +112,21 @@ export const useExtensionStore = create<ExtensionStore>()(
         return result
       },
 
+      getAggregateInfo: async (id) => {
+        try {
+          const result = await ipcClient.invoke(IPC.EXTENSION_AGGREGATE_INFO, id)
+          return (result as ExtensionAggregateInfo) ?? null
+        } catch (err) {
+          console.error('[Extensions] Failed to load aggregate info:', err)
+          return null
+        }
+      },
+
       updateExtension: async (id, patch) => {
         const result = (await ipcClient.invoke(IPC.EXTENSION_UPDATE, {
           id,
           patch
-        })) as { success: boolean; error?: string }
+        })) as { success: boolean; error?: string; syncWarnings?: string[] }
         await get().loadExtensions()
         if (result.success && patch.enabled === false) {
           set((state) => ({

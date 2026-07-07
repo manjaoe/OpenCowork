@@ -1,7 +1,15 @@
 import { shell } from 'electron'
 import { registerMessagePackHandler } from './messagepack-handler'
 import type { ExtensionInstance } from '../../shared/extension-types'
+import type { McpManager } from '../mcp/mcp-manager'
 import { nativeExtensionRequest } from './extension-native-bridge'
+import {
+  getExtensionAggregateInfo,
+  reconcileExtensionSync,
+  syncExtensionResources,
+  unsyncExtensionResources,
+  type ExtensionAggregateInfo
+} from './extension-plugin-sync'
 
 type MutationResult = {
   success: boolean
@@ -38,7 +46,11 @@ function getExtensionId(args: string | { id?: string }): string {
   return typeof args === 'string' ? args : (args.id ?? '')
 }
 
-export function registerExtensionHandlers(): void {
+export function registerExtensionHandlers(mcpManager: McpManager | null = null): void {
+  // Converge aggregate resources (skills/agents/commands/MCP) with the current
+  // enabled state, including changes made while the app was closed.
+  void reconcileExtensionSync(mcpManager)
+
   registerMessagePackHandler<undefined, ExtensionInstance[]>('extension:list', async () => {
     return await nativeExtensionRequest<ExtensionInstance[]>('extension/list')
   })
@@ -46,23 +58,43 @@ export function registerExtensionHandlers(): void {
   registerMessagePackHandler<{ sourcePath: string }, MutationResult>(
     'extension:install-from-folder',
     async (args) => {
-      return await nativeExtensionRequest<MutationResult>('extension/install-from-folder', args)
+      const result = await nativeExtensionRequest<MutationResult>(
+        'extension/install-from-folder',
+        args
+      )
+      if (result.success) await reconcileExtensionSync(mcpManager)
+      return result
     }
   )
 
-  registerMessagePackHandler<ExtensionUpdateArgs, MutationResult>(
+  registerMessagePackHandler<ExtensionUpdateArgs, MutationResult & { syncWarnings?: string[] }>(
     'extension:update',
     async (args) => {
-      return await nativeExtensionRequest<MutationResult>('extension/update', args)
+      const result = await nativeExtensionRequest<MutationResult>('extension/update', args)
+      if (result.success && typeof args.patch.enabled === 'boolean') {
+        if (args.patch.enabled) {
+          const syncWarnings = await syncExtensionResources(args.id, mcpManager)
+          return syncWarnings.length > 0 ? { ...result, syncWarnings } : result
+        }
+        await unsyncExtensionResources(args.id, mcpManager)
+      }
+      return result
+    }
+  )
+
+  registerMessagePackHandler<string | { id?: string }, ExtensionAggregateInfo>(
+    'extension:aggregate-info',
+    async (args) => {
+      return await getExtensionAggregateInfo(getExtensionId(args))
     }
   )
 
   registerMessagePackHandler<string | { id?: string }, MutationResult>(
     'extension:remove',
     async (args) => {
-      return await nativeExtensionRequest<MutationResult>('extension/remove', {
-        id: getExtensionId(args)
-      })
+      const id = getExtensionId(args)
+      await unsyncExtensionResources(id, mcpManager)
+      return await nativeExtensionRequest<MutationResult>('extension/remove', { id })
     }
   )
 

@@ -1352,7 +1352,7 @@ if (gotSingleInstanceLock) {
     registerGoalRuntimeHandlers()
     registerMemoryAutomationHandlers()
     registerConfigHandlers()
-    registerExtensionHandlers()
+    registerExtensionHandlers(mcpManager)
     await runLoggedStartupStepAsync('register_ssh_handlers', registerSshHandlers)
     registerChannelHandlers(channelManager)
     registerMcpHandlers(mcpManager)

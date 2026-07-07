@@ -1,6 +1,5 @@
 export const IMAGE_PLUGIN_ID = 'image' as const
 export const BROWSER_PLUGIN_ID = 'browser' as const
-export const PRODUCT_DESIGN_PLUGIN_ID = 'product-design' as const
 export const DESKTOP_CONTROL_PLUGIN_ID = 'desktop-control' as const
 
 export const IMAGE_GENERATE_TOOL_NAME = 'ImageGenerate' as const
@@ -20,7 +19,6 @@ export const DESKTOP_WAIT_TOOL_NAME = 'DesktopWait' as const
 export type AppPluginId =
   | typeof IMAGE_PLUGIN_ID
   | typeof BROWSER_PLUGIN_ID
-  | typeof PRODUCT_DESIGN_PLUGIN_ID
   | typeof DESKTOP_CONTROL_PLUGIN_ID
 export type AppPluginToolName =
   | typeof IMAGE_GENERATE_TOOL_NAME
@@ -78,12 +76,6 @@ export const APP_PLUGIN_DESCRIPTORS: AppPluginDescriptor[] = [
       BROWSER_TYPE_TOOL_NAME,
       BROWSER_SCROLL_TOOL_NAME
     ],
-    requiresModelConfig: false
-  },
-  {
-    id: PRODUCT_DESIGN_PLUGIN_ID,
-    builtin: true,
-    toolNames: [],
     requiresModelConfig: false
   },
   {

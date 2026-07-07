@@ -691,51 +691,6 @@
         "description": "Expose desktop screenshot, click, scroll, and keyboard tools to the Agent.",
         "promptTitle": "Tool usage constraints",
         "promptDesc": "These tools can inspect and control the full desktop. Keep approval enabled, capture the screen before acting, and use them only when direct desktop automation is required. If the active model enables Computer Use, OpenAI Computer Use will coordinate these desktop capabilities first."
-      },
-      "product-design": {
-        "title": "Product Design",
-        "description": "Explore design directions, build prototypes, audit flows, and QA visual fidelity.",
-        "promptTitle": "Workflow constraints",
-        "promptDesc": "Product Design starts by confirming the brief, uses visual targets before builds, generates three directions when no target exists, and requires design QA before prototype handoff."
-      }
-    },
-    "toolStatusDescProductDesign": "Product Design is a workflow plugin. It exposes no new low-level Tool; it coordinates enabled image, browser, search, file, shell, MCP, and deployment tools through the product-design skill.",
-    "productDesign": {
-      "workflowTitle": "Workflow plugin",
-      "workflowDesc": "Adds Product Design routing, saved design context, visual exploration, prototype scaffolding, URL cloning, image-to-code, audits, design QA, and sharing handoff.",
-      "ready": "Ready",
-      "notReady": "Not ready",
-      "optional": "Optional",
-      "ensureFailed": "Failed to prepare Product Design skill",
-      "promptsTitle": "Default prompts",
-      "workflows": {
-        "getContext": "Get context",
-        "ideate": "Ideate",
-        "prototype": "Prototype",
-        "urlToCode": "URL to code",
-        "imageToCode": "Image to code",
-        "audit": "Audit",
-        "research": "Research",
-        "designQa": "Design QA",
-        "share": "Share",
-        "userContext": "User context"
-      },
-      "prompts": {
-        "getStarted": "Help me get started",
-        "threeDirections": "Turn this product idea into three visual directions",
-        "cloneUrl": "Clone this URL into an editable prototype"
-      },
-      "dependencies": {
-        "skill": "product-design skill",
-        "skillDesc": "Copied from bundled resources when this plugin is enabled.",
-        "image": "Image generation",
-        "imageDesc": "Needed for visual directions and replacement visual assets.",
-        "browser": "Browser capture",
-        "browserDesc": "Needed for URL capture, audits, screenshots, and prototype QA.",
-        "webSearch": "Web search",
-        "webSearchDesc": "Optional, used for current UX research and public source scans.",
-        "share": "Share target",
-        "shareDesc": "Optional, detected from connected hosting or deployment MCP tools."
       }
     }
   },
@@ -1494,7 +1449,18 @@
     "loading": "Loading extensions...",
     "emptyTitle": "No extensions installed",
     "emptyDesc": "Choose a folder containing extension.json to add custom tools to OpenCowork.",
-    "noRenderers": "No custom renderers"
+    "noRenderers": "No custom renderers",
+    "syncWarnings": "Some bundled resources were not synced",
+    "bundled": "Bundled resources",
+    "bundledSkills": "{{count}} skills",
+    "bundledWorkflows": "{{count}} workflows",
+    "bundledAgents": "{{count}} agents",
+    "bundledCommands": "{{count}} commands",
+    "bundledMcp": "{{count}} MCP servers",
+    "bundledSynced": "Synced",
+    "bundledNotSynced": "Not synced",
+    "workflows": "Workflows",
+    "workflowsHint": "This plugin is one router skill that loads these workflows on demand."
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",

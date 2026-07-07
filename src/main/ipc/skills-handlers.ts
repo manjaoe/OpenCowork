@@ -77,7 +77,7 @@ function skillsParams(args?: Record<string, unknown>): Record<string, unknown> {
   }
 }
 
-async function nativeSkillsRequest<TResult>(
+export async function nativeSkillsRequest<TResult>(
   method: string,
   args?: Record<string, unknown>
 ): Promise<TResult> {

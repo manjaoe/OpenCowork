@@ -691,51 +691,6 @@
         "description": "为 Agent 提供桌面截图、坐标点击、滚动和键盘输入工具。",
         "promptTitle": "Tool 使用约束",
         "promptDesc": "这些工具可以读取并操作整个桌面。建议保持审批开启，先截图再操作，仅在确实需要桌面自动化时启用。若当前模型启用了 Computer Use，将优先通过 OpenAI Computer Use 协调这些桌面能力。"
-      },
-      "product-design": {
-        "title": "Product Design",
-        "description": "探索设计方向、构建原型、审查流程并检查视觉还原度。",
-        "promptTitle": "工作流约束",
-        "promptDesc": "Product Design 会先确认 brief；构建前必须有视觉目标；没有目标时先生成三个方向；原型交付前必须通过设计 QA。"
-      }
-    },
-    "toolStatusDescProductDesign": "Product Design 是工作流插件，不新增底层 Tool；它通过 product-design skill 编排已启用的图片、浏览器、搜索、文件、终端、MCP 和部署工具。",
-    "productDesign": {
-      "workflowTitle": "工作流插件",
-      "workflowDesc": "提供 Product Design 路由、设计上下文记忆、视觉探索、原型脚手架、URL 克隆、图转代码、审查、设计 QA 和分享交付流程。",
-      "ready": "就绪",
-      "notReady": "未就绪",
-      "optional": "可选",
-      "ensureFailed": "准备 Product Design 技能失败",
-      "promptsTitle": "默认提示词",
-      "workflows": {
-        "getContext": "收集上下文",
-        "ideate": "视觉探索",
-        "prototype": "原型",
-        "urlToCode": "URL 转代码",
-        "imageToCode": "图转代码",
-        "audit": "审查",
-        "research": "研究",
-        "designQa": "设计 QA",
-        "share": "分享",
-        "userContext": "用户上下文"
-      },
-      "prompts": {
-        "getStarted": "帮我开始使用",
-        "threeDirections": "把这个产品想法变成三个视觉方向",
-        "cloneUrl": "把这个 URL 克隆成可编辑原型"
-      },
-      "dependencies": {
-        "skill": "product-design 技能",
-        "skillDesc": "启用插件时会从内置资源复制到本地技能目录。",
-        "image": "图片生成",
-        "imageDesc": "用于视觉方向探索和缺失视觉资产生成。",
-        "browser": "浏览器采集",
-        "browserDesc": "用于 URL 采集、审查、截图和原型 QA。",
-        "webSearch": "网页搜索",
-        "webSearchDesc": "可选，用于实时 UX 研究和公开来源扫描。",
-        "share": "分享目标",
-        "shareDesc": "可选，从已连接的托管或部署 MCP 工具中检测。"
       }
     }
   },
@@ -1494,7 +1449,18 @@
     "loading": "正在加载插件...",
     "emptyTitle": "尚未安装自定义插件",
     "emptyDesc": "选择包含 extension.json 的文件夹，为 OpenCowork 添加自定义工具。",
-    "noRenderers": "无自定义渲染器"
+    "noRenderers": "无自定义渲染器",
+    "syncWarnings": "部分打包资源未同步",
+    "bundled": "打包资源",
+    "bundledSkills": "{{count}} 个技能",
+    "bundledWorkflows": "{{count}} 个工作流",
+    "bundledAgents": "{{count}} 个代理",
+    "bundledCommands": "{{count}} 个命令",
+    "bundledMcp": "{{count}} 个 MCP 服务",
+    "bundledSynced": "已同步",
+    "bundledNotSynced": "未同步",
+    "workflows": "工作流",
+    "workflowsHint": "该插件是一个路由技能，按需加载下列工作流。"
   },
   "shortcuts": {
     "title": "键盘快捷键",

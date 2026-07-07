@@ -58,6 +58,25 @@ export interface ExtensionComponentDefinition {
   description?: string
 }
 
+export interface ExtensionMcpServerDefinition {
+  transport?: 'stdio' | 'sse' | 'streamable-http'
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+  url?: string
+  headers?: Record<string, string>
+  description?: string
+}
+
+export interface ExtensionInterfaceMeta {
+  displayName?: string
+  category?: string
+  defaultPrompt?: string[]
+  icon?: string
+  brandColor?: string
+}
+
 export interface ExtensionManifest {
   schemaVersion: 1
   id: string
@@ -72,6 +91,16 @@ export interface ExtensionManifest {
   tools: ExtensionToolDefinition[]
   renderers?: ExtensionRendererDefinition[]
   components?: ExtensionComponentDefinition[]
+  // Aggregate resources: bundled content synced into the user content
+  // directories while the extension is enabled. Paths are relative to the
+  // extension root. Parsed from the on-disk extension.json by the main
+  // process; instances returned by the native worker may omit these fields.
+  skills?: string
+  agents?: string
+  commands?: string
+  mcpServers?: Record<string, ExtensionMcpServerDefinition>
+  state?: boolean
+  interface?: ExtensionInterfaceMeta
 }
 
 export interface ExtensionInstance {

@@ -31,7 +31,7 @@ export interface VisualContextInjectionOptions {
 const DEFAULT_MAX_ARTIFACTS = 4
 const DEFAULT_RECENT_MESSAGE_LIMIT = 16
 
-const PRODUCT_DESIGN_CONTEXT_RE =
+const DESIGN_CONTEXT_RE =
   /product\s*design|image-to-code|design\s*qa|visual\s+target|prototype|mockup|screenshot|原型|还原|视觉目标|截图|设计\s*qa/i
 const VISUAL_INTENT_RE =
   /image|picture|photo|screenshot|visual|mockup|prototype|figma|ui|ux|layout|pixel|design|reference|inspect|compare|target|qa|图片|图像|截图|视觉|界面|页面|原型|还原|设计|参考图|对比|看图|这张图|这个图/i
@@ -237,7 +237,7 @@ function shouldInjectVisualContext(args: {
 }): boolean {
   const text = normalizeText(args.userText)
   if (!text) return false
-  if (PRODUCT_DESIGN_CONTEXT_RE.test(text)) return true
+  if (DESIGN_CONTEXT_RE.test(text)) return true
   if (VISUAL_INTENT_RE.test(text)) return true
 
   if (!hasRecentVisualMessage(args.messages, args.lastUserIndex)) return false
