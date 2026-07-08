@@ -1,3 +1,5 @@
+import { HOOK_IPC_CHANNELS } from '../../../../shared/hooks/types'
+
 const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'app:homedir',
   'app:global-memory-home',
@@ -264,6 +266,7 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'commands:manage-read',
   'commands:manage-create',
   'commands:manage-save',
+  ...Object.values(HOOK_IPC_CHANNELS),
   'web:search-config',
   'web:search-providers',
   'team-runtime:create',
