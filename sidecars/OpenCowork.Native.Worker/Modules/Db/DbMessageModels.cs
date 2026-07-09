@@ -27,6 +27,30 @@ internal sealed class MessageRow
     public int SortOrder { get; set; }
 }
 
+internal sealed class MessageLocatorRow
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("session_id")]
+    public string SessionId { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("meta")]
+    public string? Meta { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public long CreatedAt { get; set; }
+
+    [JsonPropertyName("sort_order")]
+    public int SortOrder { get; set; }
+}
+
 internal sealed record MessageContentMatch(
     [property: JsonPropertyName("session_id")] string SessionId,
     [property: JsonPropertyName("snippet")] string Snippet);

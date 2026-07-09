@@ -6,6 +6,8 @@ using Microsoft.Data.Sqlite;
 internal static class DbMessageTools
 {
     private const int DefaultRequestContextHeadLimit = 12;
+    private const int LocatorTextCharLimit = 6000;
+    private const string LocatorTruncatedSuffix = "\n[...truncated for locator]";
 
     private static readonly IReadOnlyDictionary<string, int> RoleOrder = new Dictionary<string, int>(StringComparer.Ordinal)
     {
@@ -22,6 +24,38 @@ internal static class DbMessageTools
     public static WorkerResponse ListUser(JsonElement parameters)
     {
         return ReadRows(parameters, role: "user", paged: false);
+    }
+
+    public static WorkerResponse ListLocator(JsonElement parameters)
+    {
+        try
+        {
+            var sessionId = RequireString(parameters, "sessionId");
+            using var connection = DbConnectionFactory.OpenReadWrite(parameters);
+            NormalizeSessionMessageSortOrders(connection, sessionId);
+
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, session_id, role, content, meta, created_at, sort_order
+                  FROM messages
+                 WHERE session_id = $sessionId
+                 ORDER BY sort_order ASC, created_at ASC
+                """;
+            command.Parameters.AddWithValue("$sessionId", sessionId);
+
+            var rows = new List<MessageLocatorRow>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add(ReadMessageLocatorRow(reader));
+            }
+
+            return WorkerResponse.Json(rows, WorkerJsonContext.Default.ListMessageLocatorRow);
+        }
+        catch
+        {
+            return WorkerResponse.Json(new List<MessageLocatorRow>(), WorkerJsonContext.Default.ListMessageLocatorRow);
+        }
     }
 
     public static WorkerResponse ListPage(JsonElement parameters)
@@ -1252,6 +1286,139 @@ internal static class DbMessageTools
             CreatedAt = reader.GetInt64(5),
             Usage = reader.IsDBNull(6) ? null : reader.GetString(6),
             SortOrder = reader.GetInt32(7)
+        };
+    }
+
+    private static string BuildLocatorContent(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            var buffer = new ArrayBufferWriter<byte>();
+            using (var writer = new Utf8JsonWriter(buffer))
+            {
+                if (root.ValueKind == JsonValueKind.String)
+                {
+                    writer.WriteStringValue(TruncateLocatorText(root.GetString() ?? string.Empty));
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    writer.WriteStartArray();
+                    foreach (var block in root.EnumerateArray())
+                    {
+                        WriteLocatorContentBlock(writer, block);
+                    }
+                    writer.WriteEndArray();
+                }
+                else
+                {
+                    root.WriteTo(writer);
+                }
+            }
+
+            return Encoding.UTF8.GetString(buffer.WrittenSpan);
+        }
+        catch
+        {
+            return TruncateLocatorText(content);
+        }
+    }
+
+    private static void WriteLocatorContentBlock(Utf8JsonWriter writer, JsonElement block)
+    {
+        if (block.ValueKind != JsonValueKind.Object)
+        {
+            block.WriteTo(writer);
+            return;
+        }
+
+        var type = GetStringProperty(block, "type") ?? string.Empty;
+        writer.WriteStartObject();
+        writer.WriteString("type", type);
+
+        switch (type)
+        {
+            case "text":
+                writer.WriteString(
+                    "text",
+                    TruncateLocatorText(GetStringProperty(block, "text") ?? string.Empty));
+                break;
+            case "agent_error":
+                WriteStringPropertyIfPresent(writer, block, "code");
+                writer.WriteString(
+                    "message",
+                    TruncateLocatorText(GetStringProperty(block, "message") ?? string.Empty));
+                break;
+            case "tool_use":
+                WriteStringPropertyIfPresent(writer, block, "id");
+                WriteStringPropertyIfPresent(writer, block, "name");
+                break;
+            case "tool_result":
+                WriteStringPropertyIfPresent(writer, block, "toolUseId");
+                if (block.TryGetProperty("isError", out var isError) &&
+                    isError.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                {
+                    writer.WriteBoolean("isError", isError.GetBoolean());
+                }
+                writer.WriteString("content", "[Tool result omitted from locator]");
+                break;
+            case "image_error":
+                WriteStringPropertyIfPresent(writer, block, "code");
+                writer.WriteString(
+                    "message",
+                    TruncateLocatorText(GetStringProperty(block, "message") ?? string.Empty));
+                break;
+            default:
+                break;
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static string TruncateLocatorText(string text)
+    {
+        if (text.Length <= LocatorTextCharLimit)
+        {
+            return text;
+        }
+
+        return string.Concat(
+            text.AsSpan(0, Math.Max(0, LocatorTextCharLimit - LocatorTruncatedSuffix.Length)),
+            LocatorTruncatedSuffix);
+    }
+
+    private static string? GetStringProperty(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+    }
+
+    private static void WriteStringPropertyIfPresent(
+        Utf8JsonWriter writer,
+        JsonElement element,
+        string propertyName)
+    {
+        var value = GetStringProperty(element, propertyName);
+        if (!string.IsNullOrEmpty(value))
+        {
+            writer.WriteString(propertyName, value);
+        }
+    }
+
+    private static MessageLocatorRow ReadMessageLocatorRow(SqliteDataReader reader)
+    {
+        return new MessageLocatorRow
+        {
+            Id = reader.GetString(0),
+            SessionId = reader.GetString(1),
+            Role = reader.GetString(2),
+            Content = BuildLocatorContent(reader.GetString(3)),
+            Meta = reader.IsDBNull(4) ? null : reader.GetString(4),
+            CreatedAt = reader.GetInt64(5),
+            SortOrder = reader.GetInt32(6)
         };
     }
 

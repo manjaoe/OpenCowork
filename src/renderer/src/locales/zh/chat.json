@@ -769,6 +769,16 @@
       "imageMessage": "{{count}} 张图片",
       "emptyMessage": "空消息"
     },
+    "assistantRail": {
+      "jumpLabel": "跳转到第 {{index}} 条消息：{{preview}}",
+      "currentLabel": "当前消息 {{index}}：{{preview}}",
+      "userLabel": "跳转到第 {{index}} 条用户消息：{{preview}}",
+      "streamingLabel": "跳转到正在生成的助手回复 {{index}}：{{preview}}",
+      "summaryLabel": "跳转到第 {{index}} 条压缩历史摘要：{{preview}}",
+      "toolOnlyPreview": "{{count}} 次工具调用",
+      "summaryPreview": "压缩历史摘要",
+      "emptyPreview": "助手回复"
+    },
     "imageCopied": "图片已复制到剪贴板",
     "imageCopiedDesc": "可直接粘贴到聊天或文档中",
     "exportImageFailed": "导出图片失败",

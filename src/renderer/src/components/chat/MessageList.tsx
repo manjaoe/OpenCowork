@@ -24,9 +24,12 @@ import type { RequestRetryState } from '@renderer/lib/agent/types'
 import { isStreamingPerfEnabled, recordStreamingReactCommit } from '@renderer/lib/streaming-perf'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import { selectSessionScopedAgentState } from '@renderer/lib/agent/session-scoped-agent-state'
-import { resolveActiveCompactArtifacts } from '@renderer/lib/agent/context-compression'
+import {
+  getCompactSummaryDisplayText,
+  resolveActiveCompactArtifacts
+} from '@renderer/lib/agent/context-compression'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
-import { DB_MESSAGES_LIST_USER_MSGPACK_CHANNEL } from '../../../../shared/messagepack/binary-ipc'
+import { DB_MESSAGES_LIST_LOCATOR_MSGPACK_CHANNEL } from '../../../../shared/messagepack/binary-ipc'
 
 const modeHints = {
   chat: {
@@ -170,25 +173,7 @@ function hasEmptyAssistantContent(message: UnifiedMessage): boolean {
   return Array.isArray(message.content) && message.content.length === 0
 }
 
-interface UserMessageLocatorItem {
-  id: string
-  index: number
-  preview: string
-  time: string
-  position: number
-  sortOrder: number
-}
-
-interface UserMessageLocatorSource {
-  id: string
-  content: UnifiedMessage['content']
-  meta?: UnifiedMessage['meta']
-  createdAt: number
-  sortOrder: number
-  source?: UnifiedMessage['source']
-}
-
-interface UserMessageIndexRow {
+interface MessageLocatorIndexRow {
   id: string
   session_id: string
   role: string
@@ -196,6 +181,43 @@ interface UserMessageIndexRow {
   meta: string | null
   created_at: number
   sort_order: number
+}
+
+interface MessageLocatorSource {
+  id: string
+  role: UnifiedMessage['role']
+  content: UnifiedMessage['content']
+  meta?: UnifiedMessage['meta']
+  createdAt: number
+  sortOrder: number
+  source?: UnifiedMessage['source']
+}
+
+type AssistantRailMarkerKind = 'assistant' | 'streaming' | 'summary' | 'user'
+
+interface AssistantRailLayoutRow extends MessageLocatorSource {
+  estimatedTop: number
+  estimatedHeight: number
+  markerKind: AssistantRailMarkerKind | null
+}
+
+interface AssistantReplyRailItem {
+  id: string
+  index: number
+  preview: string
+  time: string
+  position: number
+  sortOrder: number
+  createdAt: number
+  estimatedTop: number
+  estimatedHeight: number
+  kind: AssistantRailMarkerKind
+}
+
+interface AssistantRailLayout {
+  rows: AssistantRailLayoutRow[]
+  items: AssistantReplyRailItem[]
+  totalEstimatedHeight: number
 }
 
 type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
@@ -240,9 +262,10 @@ const BOTTOM_SCROLL_CORRECTION_EPSILON = 2
 const AUTO_SCROLL_MIN_DELTA = 24
 const PROGRAMMATIC_SCROLL_GUARD_MS = 160
 const STREAMING_AUTO_SCROLL_POLL_MS = 500
-const USER_LOCATOR_PREVIEW_LIMIT = 88
-const USER_LOCATOR_SCROLL_OFFSET = 28
 const USER_LOCATOR_HIGHLIGHT_MS = 1400
+const ASSISTANT_RAIL_PREVIEW_LIMIT = 120
+const ASSISTANT_RAIL_SCROLL_OFFSET = 28
+const ASSISTANT_RAIL_DENSE_THRESHOLD = 80
 const OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD = 72
 const MIN_RENDERABLE_HISTORY_ROWS = 3
 const VIRTUAL_ROW_ESTIMATED_HEIGHT = 180
@@ -251,7 +274,12 @@ const EMPTY_ORCHESTRATION_STATE = { runs: [], byId: new Map(), byMessageId: new 
 const MESSAGE_COLUMN_CLASS = 'mx-auto w-full max-w-[820px] px-5'
 const MESSAGE_COLUMN_COMPACT_CLASS = 'mx-auto w-full max-w-[720px] px-5'
 const MESSAGE_COLUMN_FULL_WIDTH_CLASS = 'mx-auto w-full max-w-none px-5'
-const EMPTY_USER_LOCATOR_ROWS: UserMessageIndexRow[] = []
+const EMPTY_MESSAGE_LOCATOR_ROWS: MessageLocatorIndexRow[] = []
+const EMPTY_ASSISTANT_RAIL_LAYOUT: AssistantRailLayout = {
+  rows: [],
+  items: [],
+  totalEstimatedHeight: 0
+}
 
 function getMessageColumnClass(fullWidth: boolean): string {
   return fullWidth ? MESSAGE_COLUMN_FULL_WIDTH_CLASS : MESSAGE_COLUMN_CLASS
@@ -335,7 +363,6 @@ function areStringArraysEqual(a?: readonly string[], b?: readonly string[]): boo
 
   return true
 }
-void areStringSetsEqual
 
 function areRequestRetryStatesEqual(
   a?: RequestRetryState | null,
@@ -561,9 +588,9 @@ function normalizeLocatorPreview(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-function truncateLocatorPreview(text: string): string {
-  if (text.length <= USER_LOCATOR_PREVIEW_LIMIT) return text
-  return `${text.slice(0, USER_LOCATOR_PREVIEW_LIMIT - 1).trimEnd()}...`
+function truncateAssistantRailPreview(text: string): string {
+  if (text.length <= ASSISTANT_RAIL_PREVIEW_LIMIT) return text
+  return `${text.slice(0, ASSISTANT_RAIL_PREVIEW_LIMIT - 1).trimEnd()}...`
 }
 
 function isSystemPromptText(text: string): boolean {
@@ -581,22 +608,234 @@ function getUserMessageText(content: UnifiedMessage['content']): string {
     .join('\n')
 }
 
+function getAssistantVisibleText(content: UnifiedMessage['content']): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((block) => block.type === 'text' || block.type === 'agent_error')
+    .map((block) => {
+      if (block.type === 'text') return block.text
+      if (block.type === 'agent_error') return block.message
+      return ''
+    })
+    .join('\n')
+}
+
+function countToolUseBlocks(content: UnifiedMessage['content']): number {
+  if (typeof content === 'string') return 0
+  return content.filter((block) => block.type === 'tool_use').length
+}
+
+function countCodeFenceBlocks(text: string): number {
+  return text.match(/```/g)?.length ?? 0
+}
+
+function isTeamLocatorSource(source: MessageLocatorSource): boolean {
+  if (source.source === 'team') return true
+  return (
+    typeof source.content === 'string' && /^\[Team message from .+?\]:\n?/u.test(source.content)
+  )
+}
+
+function shouldShowAssistantRailMarker(
+  source: MessageLocatorSource,
+  hiddenCompactSummaryIds: Set<string>
+): boolean {
+  if (hiddenCompactSummaryIds.has(source.id)) return false
+  if (source.meta?.compactSummary) return true
+  if (source.meta?.compactBoundary) return false
+  if (source.meta?.compressionStatus) return false
+  if (isTeamLocatorSource(source)) return false
+  if (source.role === 'user') {
+    return (
+      Boolean(normalizeLocatorPreview(getUserMessageText(source.content))) ||
+      countImageBlocks(source.content) > 0
+    )
+  }
+  if (source.role !== 'assistant') return false
+  return true
+}
+
+function getAssistantRailMarkerKind(
+  source: MessageLocatorSource,
+  streamingMessageId: string | null,
+  hiddenCompactSummaryIds: Set<string>
+): AssistantRailMarkerKind | null {
+  if (!shouldShowAssistantRailMarker(source, hiddenCompactSummaryIds)) return null
+  if (source.meta?.compactSummary) return 'summary'
+  if (source.role === 'user') return 'user'
+  if (source.id === streamingMessageId) return 'streaming'
+  return 'assistant'
+}
+
+function buildAssistantRailPreview(
+  source: MessageLocatorSource,
+  kind: AssistantRailMarkerKind,
+  t: TFunction
+): string {
+  const text =
+    kind === 'summary'
+      ? getCompactSummaryDisplayText({
+          id: source.id,
+          role: source.role,
+          content: source.content,
+          createdAt: source.createdAt,
+          meta: source.meta
+        })
+      : kind === 'user'
+        ? getUserMessageText(source.content)
+        : getAssistantVisibleText(source.content)
+  const preview = truncateAssistantRailPreview(normalizeLocatorPreview(text))
+  if (preview) return preview
+
+  if (kind === 'user') {
+    const imageCount = countImageBlocks(source.content)
+    if (imageCount > 0) {
+      return t('messageList.userLocator.imageMessage', {
+        count: imageCount,
+        defaultValue: imageCount === 1 ? 'Image message' : '{{count}} images'
+      })
+    }
+    return t('messageList.userLocator.emptyMessage', {
+      defaultValue: 'Empty message'
+    })
+  }
+
+  const toolUseCount = countToolUseBlocks(source.content)
+  if (toolUseCount > 0) {
+    return t('messageList.assistantRail.toolOnlyPreview', {
+      count: toolUseCount,
+      defaultValue: toolUseCount === 1 ? '1 tool call' : '{{count}} tool calls'
+    })
+  }
+
+  if (kind === 'summary') {
+    return t('messageList.assistantRail.summaryPreview', {
+      defaultValue: 'Compressed history summary'
+    })
+  }
+
+  return t('messageList.assistantRail.emptyPreview', {
+    defaultValue: 'Assistant reply'
+  })
+}
+
+function estimateLocatorRowHeight(source: MessageLocatorSource): number {
+  if (source.meta?.compressionStatus) return 64
+  if (source.meta?.compactBoundary) return 40
+  if (source.meta?.compactSummary) return 112
+
+  const text =
+    source.role === 'assistant'
+      ? getAssistantVisibleText(source.content)
+      : getUserMessageText(source.content)
+  const normalizedLength = normalizeLocatorPreview(text).length
+  const newlineCount = text.split('\n').length - 1
+  const imageCount = countImageBlocks(source.content)
+  const toolUseCount = countToolUseBlocks(source.content)
+  const codeFenceCount = countCodeFenceBlocks(text)
+
+  if (source.role === 'assistant') {
+    return Math.max(
+      96,
+      96 +
+        Math.ceil(normalizedLength / 82) * 22 +
+        newlineCount * 8 +
+        Math.ceil(codeFenceCount / 2) * 96 +
+        toolUseCount * 88 +
+        imageCount * 180
+    )
+  }
+
+  if (source.role === 'user') {
+    return Math.max(72, 72 + Math.ceil(normalizedLength / 90) * 18 + imageCount * 120)
+  }
+
+  if (source.role === 'tool') return 64 + Math.min(120, Math.ceil(normalizedLength / 120) * 18)
+  return 48
+}
+
+function buildAssistantRailLayout(args: {
+  sources: MessageLocatorSource[]
+  streamingMessageId: string | null
+  measuredHeights: Map<string, number>
+  hiddenCompactSummaryIds: Set<string>
+  t: TFunction
+}): AssistantRailLayout {
+  if (args.sources.length === 0) return EMPTY_ASSISTANT_RAIL_LAYOUT
+
+  const rows: AssistantRailLayoutRow[] = []
+  let estimatedTop = 0
+
+  for (const source of args.sources) {
+    const estimatedHeight = Math.max(
+      1,
+      args.measuredHeights.get(source.id) ?? estimateLocatorRowHeight(source)
+    )
+    const markerKind = getAssistantRailMarkerKind(
+      source,
+      args.streamingMessageId,
+      args.hiddenCompactSummaryIds
+    )
+    rows.push({ ...source, estimatedTop, estimatedHeight, markerKind })
+    estimatedTop += estimatedHeight
+  }
+
+  const totalEstimatedHeight = Math.max(1, estimatedTop)
+  const items: AssistantReplyRailItem[] = []
+  for (const row of rows) {
+    if (!row.markerKind) continue
+    items.push({
+      id: row.id,
+      index: items.length + 1,
+      preview: buildAssistantRailPreview(row, row.markerKind, args.t),
+      time: formatLocatorTime(row.createdAt),
+      position: (row.estimatedTop + row.estimatedHeight / 2) / totalEstimatedHeight,
+      sortOrder: row.sortOrder,
+      createdAt: row.createdAt,
+      estimatedTop: row.estimatedTop,
+      estimatedHeight: row.estimatedHeight,
+      kind: row.markerKind
+    })
+  }
+
+  return { rows, items, totalEstimatedHeight }
+}
+
+function parseLocatorRowSource(row: MessageLocatorIndexRow): MessageLocatorSource {
+  return {
+    id: row.id,
+    role: row.role as UnifiedMessage['role'],
+    content: parseLocatorContent(row.content),
+    meta: parseLocatorMeta(row.meta),
+    createdAt: row.created_at,
+    sortOrder: row.sort_order
+  }
+}
+
 function countImageBlocks(content: UnifiedMessage['content']): number {
   if (typeof content === 'string') return 0
   return content.filter((block) => block.type === 'image' || block.type === 'image_error').length
 }
 
-function getCompactLocatorGapPx(total: number): number {
+function getCompactRailGapPx(total: number): number {
   return Math.max(3.5, Math.min(9, 176 / (Math.max(2, total) - 1)))
 }
 
-function getCompactLocatorMarkerTop(index: number, total: number): string {
+function getCompactRailMarkerOffsetPx(index: number, total: number): number {
   const safeTotal = Math.max(1, total)
-  if (safeTotal === 1) return '50%'
+  if (safeTotal === 1) return 0
 
-  const offsetPx = (index - (safeTotal - 1) / 2) * getCompactLocatorGapPx(safeTotal)
+  const gapPx = getCompactRailGapPx(safeTotal)
+  return (index - (safeTotal - 1) / 2) * gapPx
+}
 
+function getCompactRailMarkerTop(index: number, total: number): string {
+  const offsetPx = getCompactRailMarkerOffsetPx(index, total)
   return `calc(50% + ${Number(offsetPx.toFixed(2))}px)`
+}
+
+function getCompactRailMarkerY(rect: DOMRect, index: number, total: number): number {
+  return rect.top + rect.height / 2 + getCompactRailMarkerOffsetPx(index, total)
 }
 
 function formatLocatorTime(timestamp: number): string {
@@ -638,51 +877,39 @@ function parseLocatorMeta(rawMeta: string | null): UnifiedMessage['meta'] {
   }
 }
 
-function buildUserLocatorItem(
-  source: UserMessageLocatorSource,
-  index: number,
-  messageCount: number,
-  t: TFunction
-): UserMessageLocatorItem | null {
-  if (source.source === 'team' || source.meta?.compactSummary) return null
-
-  const textPreview = truncateLocatorPreview(
-    normalizeLocatorPreview(getUserMessageText(source.content))
-  )
-  const imageCount = countImageBlocks(source.content)
-  if (!textPreview && imageCount === 0) return null
-
-  const fallbackPreview =
-    imageCount > 0
-      ? t('messageList.userLocator.imageMessage', {
-          count: imageCount,
-          defaultValue: imageCount === 1 ? 'Image message' : '{{count}} images'
-        })
-      : t('messageList.userLocator.emptyMessage', {
-          defaultValue: 'Empty message'
-        })
-
-  return {
-    id: source.id,
-    index,
-    preview: textPreview || fallbackPreview,
-    time: formatLocatorTime(source.createdAt),
-    position: messageCount > 1 ? source.sortOrder / (messageCount - 1) : 0,
-    sortOrder: source.sortOrder
-  }
-}
-
-function UserMessageLocator({
+function AssistantReplyRail({
   items,
-  activeMessageId,
+  activeMessageIds,
   onJump
 }: {
-  items: UserMessageLocatorItem[]
-  activeMessageId?: string | null
-  onJump: (item: UserMessageLocatorItem) => void
+  items: AssistantReplyRailItem[]
+  activeMessageIds: Set<string>
+  onJump: (item: AssistantReplyRailItem) => void
 }): React.JSX.Element | null {
   const { t } = useTranslation('chat')
   const [previewMessageId, setPreviewMessageId] = React.useState<string | null>(null)
+  const dense = items.length >= ASSISTANT_RAIL_DENSE_THRESHOLD
+
+  const getNearestItem = React.useCallback(
+    (clientY: number, target: HTMLElement): AssistantReplyRailItem | null => {
+      if (items.length === 0) return null
+      const rect = target.getBoundingClientRect()
+      if (rect.height <= 0) return null
+      let nearestItem = items[0]
+      let nearestDistance = Number.POSITIVE_INFINITY
+      for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+        const item = items[itemIndex]
+        const markerY = getCompactRailMarkerY(rect, itemIndex, items.length)
+        const distance = Math.abs(markerY - clientY)
+        if (distance < nearestDistance) {
+          nearestDistance = distance
+          nearestItem = item
+        }
+      }
+      return nearestItem
+    },
+    [items]
+  )
 
   if (items.length < 2) return null
 
@@ -692,51 +919,146 @@ function UserMessageLocator({
   const previewItemIndex = previewItem ? items.findIndex((item) => item.id === previewItem.id) : -1
   const previewCopy = previewItem ? splitLocatorPreview(previewItem.preview) : null
   const previewTop =
-    previewItemIndex >= 0 ? getCompactLocatorMarkerTop(previewItemIndex, items.length) : '50%'
+    previewItemIndex >= 0 ? getCompactRailMarkerTop(previewItemIndex, items.length) : '50%'
+
+  const renderMarker = (item: AssistantReplyRailItem, previewing: boolean): React.JSX.Element => {
+    const active = activeMessageIds.has(item.id)
+    return (
+      <span
+        className={cn(
+          'block h-0.5 w-3 rounded-full transition-colors duration-150',
+          item.kind === 'summary'
+            ? 'bg-amber-500/55'
+            : item.kind === 'user'
+              ? 'bg-primary/45'
+              : item.kind === 'streaming'
+                ? 'bg-primary/65'
+                : 'bg-muted-foreground/35',
+          item.kind === 'streaming' && 'animate-pulse',
+          active ? 'bg-foreground/85 opacity-100' : 'opacity-65',
+          previewing && 'bg-foreground/95 opacity-100'
+        )}
+      />
+    )
+  }
+
+  const getLabel = (item: AssistantReplyRailItem): string => {
+    if (activeMessageIds.has(item.id)) {
+      return t('messageList.assistantRail.currentLabel', {
+        index: item.index,
+        preview: item.preview,
+        defaultValue: 'Current message {{index}}: {{preview}}'
+      })
+    }
+    if (item.kind === 'user') {
+      return t('messageList.assistantRail.userLabel', {
+        index: item.index,
+        preview: item.preview,
+        defaultValue: 'Jump to user message {{index}}: {{preview}}'
+      })
+    }
+    if (item.kind === 'streaming') {
+      return t('messageList.assistantRail.streamingLabel', {
+        index: item.index,
+        preview: item.preview,
+        defaultValue: 'Jump to streaming assistant reply {{index}}: {{preview}}'
+      })
+    }
+    if (item.kind === 'summary') {
+      return t('messageList.assistantRail.summaryLabel', {
+        index: item.index,
+        preview: item.preview,
+        defaultValue: 'Jump to compressed history summary {{index}}: {{preview}}'
+      })
+    }
+    return t('messageList.assistantRail.jumpLabel', {
+      index: item.index,
+      preview: item.preview,
+      defaultValue: 'Jump to message {{index}}: {{preview}}'
+    })
+  }
 
   return (
-    <div className="pointer-events-none absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 md:block">
-      <div className="pointer-events-none relative h-[min(52vh,24rem)] w-[min(324px,calc(100vw-3rem))]">
+    <div className="pointer-events-none absolute bottom-5 left-2 top-5 z-20 hidden md:block">
+      <div className="pointer-events-none relative h-full w-[min(320px,calc(100vw-3rem))]">
         {previewItem && previewCopy ? (
-          <>
-            <div
-              className="absolute right-12 w-[min(276px,calc(100vw-5rem))] -translate-y-1/2 animate-in fade-in-0 slide-in-from-right-1 duration-150"
-              style={{ top: previewTop }}
-            >
-              <div className="overflow-hidden rounded-xl border border-border/70 bg-popover/95 px-3 py-2.5 text-popover-foreground shadow-xl backdrop-blur-xl">
-                <div className="line-clamp-1 text-[12px] font-semibold leading-5">
+          <div
+            className="absolute left-7 w-[min(276px,calc(100vw-5rem))] -translate-y-1/2 animate-in fade-in-0 slide-in-from-left-1 duration-150"
+            style={{ top: previewTop }}
+          >
+            <div className="overflow-hidden rounded-xl border border-border/70 bg-popover/95 px-3 py-2.5 text-popover-foreground shadow-xl backdrop-blur-xl">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    previewItem.kind === 'summary'
+                      ? 'bg-amber-500/80'
+                      : previewItem.kind === 'user'
+                        ? 'bg-primary/80'
+                        : previewItem.kind === 'streaming'
+                          ? 'bg-primary/80'
+                          : 'bg-muted-foreground/70'
+                  )}
+                />
+                <div className="min-w-0 flex-1 line-clamp-1 text-[12px] font-semibold leading-5">
                   {previewCopy.title}
                 </div>
-                {previewCopy.detail ? (
-                  <div className="mt-0.5 line-clamp-2 text-[11px] leading-[18px] text-muted-foreground">
-                    {previewCopy.detail}
-                  </div>
-                ) : null}
               </div>
+              {previewCopy.detail ? (
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-[18px] text-muted-foreground">
+                  {previewCopy.detail}
+                </div>
+              ) : null}
             </div>
-          </>
+          </div>
         ) : null}
 
-        <div className="pointer-events-none absolute right-0 top-0 h-full w-11">
+        <div
+          className={cn(
+            'absolute left-0 top-0 h-full w-6',
+            dense ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
+          )}
+          onPointerMove={
+            dense
+              ? (event) => {
+                  const item = getNearestItem(event.clientY, event.currentTarget)
+                  setPreviewMessageId((prev) => (prev === item?.id ? prev : (item?.id ?? null)))
+                }
+              : undefined
+          }
+          onPointerLeave={dense ? () => setPreviewMessageId(null) : undefined}
+          onClick={
+            dense
+              ? (event) => {
+                  const item = getNearestItem(event.clientY, event.currentTarget)
+                  if (item) onJump(item)
+                }
+              : undefined
+          }
+        >
           {items.map((item, itemIndex) => {
-            const active = activeMessageId === item.id
             const previewing = previewMessageId === item.id
-            return (
+            return dense ? (
+              <span
+                key={item.id}
+                className="absolute left-0 flex h-3 w-6 -translate-y-1/2 items-center justify-start"
+                style={{ top: getCompactRailMarkerTop(itemIndex, items.length) }}
+              >
+                {renderMarker(item, previewing)}
+              </span>
+            ) : (
               <button
                 key={item.id}
                 type="button"
-                aria-label={t('messageList.userLocator.jumpLabel', {
-                  index: item.index,
-                  preview: item.preview,
-                  defaultValue: 'Jump to user message {{index}}: {{preview}}'
-                })}
+                aria-current={activeMessageIds.has(item.id) ? 'true' : undefined}
+                aria-label={getLabel(item)}
                 title={item.preview}
-                className="pointer-events-auto group/marker absolute right-0 flex w-11 -translate-y-1/2 items-center justify-end rounded-sm outline-none"
+                className="pointer-events-auto group/assistant-marker absolute left-0 flex w-6 -translate-y-1/2 items-center justify-start rounded-sm outline-none"
                 style={{
-                  top: getCompactLocatorMarkerTop(itemIndex, items.length),
+                  top: getCompactRailMarkerTop(itemIndex, items.length),
                   // Hit areas must tile without overlap: taller buttons would let the
                   // next (later-in-DOM) marker steal hover below each line.
-                  height: getCompactLocatorGapPx(items.length)
+                  height: getCompactRailGapPx(items.length)
                 }}
                 onPointerEnter={() => setPreviewMessageId(item.id)}
                 onPointerLeave={() => setPreviewMessageId(null)}
@@ -744,17 +1066,29 @@ function UserMessageLocator({
                 onBlur={() => setPreviewMessageId(null)}
                 onClick={() => onJump(item)}
               >
-                <span
-                  className={cn(
-                    'block h-px rounded-full bg-muted-foreground/35 transition-all duration-150 group-hover/marker:bg-foreground/80 group-focus-visible/marker:bg-foreground/90',
-                    active ? 'w-4 bg-muted-foreground/70' : 'w-2.5',
-                    previewing && 'h-0.5 w-8 bg-foreground/95'
-                  )}
-                />
+                {renderMarker(item, previewing)}
               </button>
             )
           })}
         </div>
+
+        {dense ? (
+          <div className="sr-only">
+            {items.map((item) => (
+              <button
+                key={`assistant-rail-keyboard-${item.id}`}
+                type="button"
+                aria-current={activeMessageIds.has(item.id) ? 'true' : undefined}
+                aria-label={getLabel(item)}
+                onFocus={() => setPreviewMessageId(item.id)}
+                onBlur={() => setPreviewMessageId(null)}
+                onClick={() => onJump(item)}
+              >
+                {item.preview}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -1090,24 +1424,27 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
   const pendingInitialScrollSessionIdRef = React.useRef<string | null>(null)
   const autoScrollModeRef = React.useRef<AutoScrollMode>('off')
   const scheduledScrollFrameRef = React.useRef<number | null>(null)
+  const scheduledAssistantRailSyncRef = React.useRef<number | null>(null)
   const highlightedMessageTimerRef = React.useRef<number | null>(null)
   const lastScrollOffsetRef = React.useRef(0)
   const programmaticScrollUntilRef = React.useRef(0)
   const wasSessionOutputtingRef = React.useRef(isSessionOutputting)
+  const measuredMessageHeightsRef = React.useRef(new Map<string, number>())
   const [isAtBottom, setIsAtBottom] = React.useState(true)
-  const [activeUserLocatorMessageId, setActiveUserLocatorMessageId] = React.useState<string | null>(
-    null
-  )
+  const [activeAssistantRailMessageIds, setActiveAssistantRailMessageIds] = React.useState<
+    Set<string>
+  >(() => new Set())
   const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = React.useState(false)
-  const [userLocatorSnapshot, setUserLocatorSnapshot] = React.useState<{
+  const [assistantRailMeasureVersion, setAssistantRailMeasureVersion] = React.useState(0)
+  const [messageLocatorSnapshot, setMessageLocatorSnapshot] = React.useState<{
     sessionId: string | null
-    rows: UserMessageIndexRow[]
-  }>({ sessionId: null, rows: EMPTY_USER_LOCATOR_ROWS })
-  const userLocatorRows =
-    userLocatorSnapshot.sessionId === activeSessionId
-      ? userLocatorSnapshot.rows
-      : EMPTY_USER_LOCATOR_ROWS
+    rows: MessageLocatorIndexRow[]
+  }>({ sessionId: null, rows: EMPTY_MESSAGE_LOCATOR_ROWS })
+  const messageLocatorRows =
+    messageLocatorSnapshot.sessionId === activeSessionId
+      ? messageLocatorSnapshot.rows
+      : EMPTY_MESSAGE_LOCATOR_ROWS
 
   const orchestrationState = React.useMemo(
     () =>
@@ -1187,32 +1524,18 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     [assistantChangeTargets]
   )
 
-  // Parsing the DB rows is keyed on the rows alone — re-running the
-  // JSON.parse of every user row on each streaming messages-array flush is
-  // needless churn; rows only change when the session (re)loads.
-  const userLocatorRowSources = React.useMemo(() => {
-    const sourcesById = new Map<string, UserMessageLocatorSource>()
-    for (const row of userLocatorRows) {
-      if (row.role !== 'user') continue
-      sourcesById.set(row.id, {
-        id: row.id,
-        content: parseLocatorContent(row.content),
-        meta: parseLocatorMeta(row.meta),
-        createdAt: row.created_at,
-        sortOrder: row.sort_order
-      })
+  const messageLocatorSources = React.useMemo<MessageLocatorSource[]>(() => {
+    const sourcesById = new Map<string, MessageLocatorSource>()
+    for (const row of messageLocatorRows) {
+      const source = parseLocatorRowSource(row)
+      sourcesById.set(source.id, source)
     }
-    return sourcesById
-  }, [userLocatorRows])
-
-  const userLocatorItems = React.useMemo<UserMessageLocatorItem[]>(() => {
-    const sourcesById = new Map(userLocatorRowSources)
 
     messages.forEach((message, messageIndex) => {
-      if (message.role !== 'user') return
       const existing = sourcesById.get(message.id)
       sourcesById.set(message.id, {
         id: message.id,
+        role: message.role,
         content: message.content,
         meta: message.meta,
         createdAt: message.createdAt,
@@ -1221,43 +1544,84 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       })
     })
 
-    const items: UserMessageLocatorItem[] = []
-    for (const source of [...sourcesById.values()].sort((a, b) => a.sortOrder - b.sortOrder)) {
-      const item = buildUserLocatorItem(source, items.length + 1, activeSessionMessageCount, t)
-      if (item) items.push(item)
+    return [...sourcesById.values()].sort((first, second) => {
+      if (first.sortOrder !== second.sortOrder) return first.sortOrder - second.sortOrder
+      return first.createdAt - second.createdAt
+    })
+  }, [loadedRangeStart, messageLocatorRows, messages])
+
+  const hiddenAssistantRailCompactSummaryIds = React.useMemo(() => {
+    const sourceIds = new Set(messageLocatorSources.map((source) => source.id))
+    const hiddenIds = new Set(inlineCompactSummaryState.summaryIds)
+
+    for (const source of messageLocatorSources) {
+      const anchorId = source.meta?.compactSummary?.displayAnchor?.assistantMessageId
+      if (anchorId && sourceIds.has(anchorId)) {
+        hiddenIds.add(source.id)
+      }
     }
-    return items
-  }, [activeSessionMessageCount, loadedRangeStart, messages, t, userLocatorRowSources])
+
+    return hiddenIds
+  }, [inlineCompactSummaryState.summaryIds, messageLocatorSources])
+
+  const assistantRailLayout = React.useMemo<AssistantRailLayout>(() => {
+    void assistantRailMeasureVersion
+    return buildAssistantRailLayout({
+      sources: messageLocatorSources,
+      streamingMessageId,
+      measuredHeights: measuredMessageHeightsRef.current,
+      hiddenCompactSummaryIds: hiddenAssistantRailCompactSummaryIds,
+      t
+    })
+  }, [
+    assistantRailMeasureVersion,
+    hiddenAssistantRailCompactSummaryIds,
+    messageLocatorSources,
+    streamingMessageId,
+    t
+  ])
+
+  const assistantRailItems = assistantRailLayout.items
+  const assistantRailItemById = React.useMemo(
+    () => new Map(assistantRailItems.map((item) => [item.id, item])),
+    [assistantRailItems]
+  )
 
   React.useEffect(() => {
     let cancelled = false
 
     if (!activeSessionId) {
-      setUserLocatorSnapshot({ sessionId: null, rows: EMPTY_USER_LOCATOR_ROWS })
+      setMessageLocatorSnapshot({
+        sessionId: null,
+        rows: EMPTY_MESSAGE_LOCATOR_ROWS
+      })
       return
     }
 
-    const loadUserLocatorRows = async (): Promise<void> => {
+    const loadMessageLocatorRows = async (): Promise<void> => {
       try {
-        const rows = await invokeMessagePackBinary<UserMessageIndexRow[] | null>(
-          DB_MESSAGES_LIST_USER_MSGPACK_CHANNEL,
+        const rows = await invokeMessagePackBinary<MessageLocatorIndexRow[] | null>(
+          DB_MESSAGES_LIST_LOCATOR_MSGPACK_CHANNEL,
           activeSessionId
         )
         if (!cancelled) {
-          setUserLocatorSnapshot({
+          setMessageLocatorSnapshot({
             sessionId: activeSessionId,
-            rows: Array.isArray(rows) ? rows : EMPTY_USER_LOCATOR_ROWS
+            rows: Array.isArray(rows) ? rows : EMPTY_MESSAGE_LOCATOR_ROWS
           })
         }
       } catch (err) {
-        console.error('[MessageList] Failed to load user message locator rows:', err)
+        console.error('[MessageList] Failed to load message locator rows:', err)
         if (!cancelled) {
-          setUserLocatorSnapshot({ sessionId: activeSessionId, rows: EMPTY_USER_LOCATOR_ROWS })
+          setMessageLocatorSnapshot({
+            sessionId: activeSessionId,
+            rows: EMPTY_MESSAGE_LOCATOR_ROWS
+          })
         }
       }
     }
 
-    void loadUserLocatorRows()
+    void loadMessageLocatorRows()
 
     return () => {
       cancelled = true
@@ -1296,15 +1660,13 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     (!activeSessionLoaded || activeSessionMessageCount > 0 || loadedRangeStart > 0)
 
   const lastMessageRowIndex = rows.length - 1
-  const userLocatorItemById = React.useMemo(
-    () => new Map(userLocatorItems.map((item) => [item.id, item])),
-    [userLocatorItems]
-  )
 
   const canAutoScroll = React.useCallback(() => {
     const mode = autoScrollModeRef.current
-    return mode === 'user' || (mode === 'stream' && canSessionTriggerStreamingAutoScroll)
-  }, [canSessionTriggerStreamingAutoScroll])
+    return (
+      mode === 'user' || (mode === 'stream' && canSessionTriggerStreamingAutoScroll && isAtBottom)
+    )
+  }, [canSessionTriggerStreamingAutoScroll, isAtBottom])
 
   const markProgrammaticScroll = React.useCallback(() => {
     programmaticScrollUntilRef.current = window.performance.now() + PROGRAMMATIC_SCROLL_GUARD_MS
@@ -1328,7 +1690,6 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     const threshold = isSessionOutputting
       ? STREAMING_AUTO_SCROLL_BOTTOM_THRESHOLD
       : AUTO_SCROLL_BOTTOM_THRESHOLD
-    const nextAtBottom = distanceToBottom <= threshold
     const previousOffset = lastScrollOffsetRef.current
     const currentOffset = ref.scrollTop
     const scrolledUp = currentOffset < previousOffset - BOTTOM_SCROLL_CORRECTION_EPSILON
@@ -1343,60 +1704,106 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       : threshold
     if (scrolledUp && distanceToBottom > followReleaseThreshold && !isProgrammaticScroll) {
       autoScrollModeRef.current = 'off'
-    } else if (nextAtBottom && isSessionOutputting && autoScrollModeRef.current === 'off') {
+      setIsAtBottom(false)
+      return
+    }
+
+    const physicallyAtBottom = distanceToBottom <= threshold
+    if (physicallyAtBottom && isSessionOutputting && autoScrollModeRef.current === 'off') {
       autoScrollModeRef.current = 'stream'
     }
+
+    const nextAtBottom =
+      physicallyAtBottom || (isSessionOutputting && autoScrollModeRef.current === 'stream')
 
     setIsAtBottom((prev) => (prev === nextAtBottom ? prev : nextAtBottom))
   }, [isSessionOutputting])
 
-  const syncActiveUserLocator = React.useCallback(() => {
+  const measureVisibleMessageHeights = React.useCallback(() => {
     const ref = listRef.current
-    if (!ref || userLocatorItems.length === 0) {
-      setActiveUserLocatorMessageId((prev) => (prev === null ? prev : null))
+    if (!ref) return false
+
+    let changed = false
+    for (const element of ref.querySelectorAll<HTMLElement>('[data-message-id]')) {
+      const messageId = element.dataset.messageId
+      if (!messageId) continue
+      const height = element.offsetHeight
+      if (height <= 0) continue
+      const previous = measuredMessageHeightsRef.current.get(messageId)
+      if (previous === undefined || Math.abs(previous - height) > 2) {
+        measuredMessageHeightsRef.current.set(messageId, height)
+        changed = true
+      }
+    }
+
+    return changed
+  }, [])
+
+  const setActiveAssistantRailIds = React.useCallback((nextIds: Set<string>) => {
+    setActiveAssistantRailMessageIds((previousIds) =>
+      areStringSetsEqual(previousIds, nextIds) ? previousIds : nextIds
+    )
+  }, [])
+
+  const syncActiveAssistantRail = React.useCallback(() => {
+    const ref = listRef.current
+    if (!ref || assistantRailItems.length === 0 || assistantRailLayout.rows.length === 0) {
+      setActiveAssistantRailIds(new Set())
       return
     }
 
-    const containerTop = ref.getBoundingClientRect().top
-    let nearestVisibleId: string | null = null
-    let nearestVisibleDistance = Number.POSITIVE_INFINITY
+    const didMeasure = measureVisibleMessageHeights()
+    if (didMeasure) {
+      setAssistantRailMeasureVersion((version) => version + 1)
+    }
+
+    const containerRect = ref.getBoundingClientRect()
+    const nextActiveIds = new Set<string>()
 
     for (const element of ref.querySelectorAll<HTMLElement>('[data-message-id]')) {
       const messageId = element.dataset.messageId
-      if (!messageId || !userLocatorItemById.has(messageId)) continue
-
-      const distance = Math.abs(element.getBoundingClientRect().top - containerTop)
-      if (distance < nearestVisibleDistance) {
-        nearestVisibleDistance = distance
-        nearestVisibleId = messageId
-      }
+      if (!messageId) continue
+      if (!assistantRailItemById.has(messageId)) continue
+      const rect = element.getBoundingClientRect()
+      if (rect.bottom <= containerRect.top || rect.top >= containerRect.bottom) continue
+      nextActiveIds.add(messageId)
     }
 
-    if (nearestVisibleId) {
-      setActiveUserLocatorMessageId((prev) => (prev === nearestVisibleId ? prev : nearestVisibleId))
-      return
-    }
+    setActiveAssistantRailIds(nextActiveIds)
+  }, [
+    assistantRailItemById,
+    assistantRailItems,
+    assistantRailLayout,
+    measureVisibleMessageHeights,
+    setActiveAssistantRailIds
+  ])
 
-    const scrollableDistance = Math.max(1, ref.scrollHeight - ref.clientHeight)
-    const scrollProgress = Math.min(1, Math.max(0, ref.scrollTop / scrollableDistance))
-    let nextActiveId = userLocatorItems[0]?.id ?? null
-    let nearestDistance = Number.POSITIVE_INFINITY
+  const requestAssistantRailSync = React.useCallback(() => {
+    if (scheduledAssistantRailSyncRef.current !== null) return
+    scheduledAssistantRailSyncRef.current = window.requestAnimationFrame(() => {
+      scheduledAssistantRailSyncRef.current = null
+      syncActiveAssistantRail()
+    })
+  }, [syncActiveAssistantRail])
 
-    for (const item of userLocatorItems) {
-      const distance = Math.abs(item.position - scrollProgress)
-      if (distance < nearestDistance) {
-        nearestDistance = distance
-        nextActiveId = item.id
-      }
-    }
-
-    setActiveUserLocatorMessageId((prev) => (prev === nextActiveId ? prev : nextActiveId))
-  }, [userLocatorItemById, userLocatorItems])
-
-  const handleJumpToUserMessage = React.useCallback(
-    async (item: UserMessageLocatorItem): Promise<void> => {
+  const handleJumpToAssistantMessage = React.useCallback(
+    async (item: AssistantReplyRailItem): Promise<void> => {
       const messageId = item.id
-      const scrollToTarget = (): boolean => {
+      autoScrollModeRef.current = 'off'
+      setIsAtBottom(false)
+
+      const setHighlightTimer = (): void => {
+        setHighlightedMessageId(messageId)
+        if (highlightedMessageTimerRef.current !== null) {
+          window.clearTimeout(highlightedMessageTimerRef.current)
+        }
+        highlightedMessageTimerRef.current = window.setTimeout(() => {
+          setHighlightedMessageId((prev) => (prev === messageId ? null : prev))
+          highlightedMessageTimerRef.current = null
+        }, USER_LOCATOR_HIGHLIGHT_MS)
+      }
+
+      const scrollToTarget = (behavior: ScrollBehavior = 'smooth'): boolean => {
         const ref = listRef.current
         if (!ref) return false
 
@@ -1405,27 +1812,18 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
         )
         if (!target) return false
 
-        autoScrollModeRef.current = 'off'
         markProgrammaticScroll()
-        setActiveUserLocatorMessageId(messageId)
-        setHighlightedMessageId(messageId)
+        setActiveAssistantRailIds(new Set([messageId]))
+        setHighlightTimer()
         // offsetTop is relative to the absolutely-positioned virtual row wrapper and
         // ignores its translateY, so derive the real position from bounding rects.
         const targetTop =
           ref.scrollTop + (target.getBoundingClientRect().top - ref.getBoundingClientRect().top)
         ref.scrollTo({
-          top: Math.max(0, targetTop - USER_LOCATOR_SCROLL_OFFSET),
-          behavior: 'smooth'
+          top: Math.max(0, targetTop - ASSISTANT_RAIL_SCROLL_OFFSET),
+          behavior
         })
-
-        if (highlightedMessageTimerRef.current !== null) {
-          window.clearTimeout(highlightedMessageTimerRef.current)
-        }
-        highlightedMessageTimerRef.current = window.setTimeout(() => {
-          setHighlightedMessageId((prev) => (prev === messageId ? null : prev))
-          highlightedMessageTimerRef.current = null
-        }, USER_LOCATOR_HIGHLIGHT_MS)
-
+        requestAssistantRailSync()
         return true
       }
 
@@ -1452,17 +1850,21 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
         const targetSession = chatState.sessions.find((session) => session.id === activeSessionId)
         rowVirtualizer.scrollToIndex(
           targetIndex + ((targetSession?.loadedRangeStart ?? 0) > 0 ? 1 : 0),
-          {
-            align: 'center'
-          }
+          { align: 'center' }
         )
         await new Promise<void>((resolve) => {
           window.requestAnimationFrame(() => resolve())
         })
-        scrollToTarget()
+        scrollToTarget('auto')
       }
     },
-    [activeSessionId, markProgrammaticScroll, rowVirtualizer]
+    [
+      activeSessionId,
+      markProgrammaticScroll,
+      requestAssistantRailSync,
+      rowVirtualizer,
+      setActiveAssistantRailIds
+    ]
   )
 
   const loadOlderMessages = React.useCallback(async (): Promise<number> => {
@@ -1493,7 +1895,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
         }
       }
       syncBottomState()
-      syncActiveUserLocator()
+      requestAssistantRailSync()
       return loaded
     } finally {
       setIsLoadingOlderMessages(false)
@@ -1503,7 +1905,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     isLoadingOlderMessages,
     loadedRangeStart,
     markProgrammaticScroll,
-    syncActiveUserLocator,
+    requestAssistantRailSync,
     syncBottomState
   ])
 
@@ -1565,7 +1967,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
 
   const handleListScroll = React.useCallback(() => {
     syncBottomState()
-    syncActiveUserLocator()
+    requestAssistantRailSync()
     const ref = listRef.current
     if (
       ref &&
@@ -1579,7 +1981,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     isLoadingOlderMessages,
     loadOlderMessages,
     loadedRangeStart,
-    syncActiveUserLocator,
+    requestAssistantRailSync,
     syncBottomState
   ])
 
@@ -1601,7 +2003,10 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     pendingInitialScrollSessionIdRef.current = activeSessionId
     lastScrollOffsetRef.current = 0
     programmaticScrollUntilRef.current = 0
-  }, [activeSessionId])
+    measuredMessageHeightsRef.current.clear()
+    setAssistantRailMeasureVersion((version) => version + 1)
+    setActiveAssistantRailIds(new Set())
+  }, [activeSessionId, setActiveAssistantRailIds])
 
   React.useLayoutEffect(() => {
     if (!activeSessionId) return
@@ -1669,13 +2074,16 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
   ])
 
   React.useEffect(() => {
-    syncActiveUserLocator()
-  }, [syncActiveUserLocator])
+    requestAssistantRailSync()
+  }, [requestAssistantRailSync])
 
   React.useEffect(() => {
     return () => {
       if (scheduledScrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scheduledScrollFrameRef.current)
+      }
+      if (scheduledAssistantRailSyncRef.current !== null) {
+        window.cancelAnimationFrame(scheduledAssistantRailSyncRef.current)
       }
       if (highlightedMessageTimerRef.current !== null) {
         window.clearTimeout(highlightedMessageTimerRef.current)
@@ -1835,7 +2243,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     <div ref={containerRef} className="relative flex-1" data-message-list>
       <div
         ref={listRef}
-        className="absolute inset-0 overflow-y-auto"
+        className="absolute inset-0 overflow-y-auto pl-7 md:pl-9"
         data-message-content
         style={{ overflowAnchor: 'none' }}
         onScroll={handleListScroll}
@@ -1939,10 +2347,10 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
         </div>
       </div>
 
-      <UserMessageLocator
-        items={userLocatorItems}
-        activeMessageId={activeUserLocatorMessageId}
-        onJump={handleJumpToUserMessage}
+      <AssistantReplyRail
+        items={assistantRailItems}
+        activeMessageIds={activeAssistantRailMessageIds}
+        onJump={handleJumpToAssistantMessage}
       />
 
       {!isAtBottom && messages.length > 0 && (

@@ -769,6 +769,16 @@
       "imageMessage": "{{count}} images",
       "emptyMessage": "Empty message"
     },
+    "assistantRail": {
+      "jumpLabel": "Jump to message {{index}}: {{preview}}",
+      "currentLabel": "Current message {{index}}: {{preview}}",
+      "userLabel": "Jump to user message {{index}}: {{preview}}",
+      "streamingLabel": "Jump to streaming assistant reply {{index}}: {{preview}}",
+      "summaryLabel": "Jump to compressed history summary {{index}}: {{preview}}",
+      "toolOnlyPreview": "{{count}} tool calls",
+      "summaryPreview": "Compressed history summary",
+      "emptyPreview": "Assistant reply"
+    },
     "imageCopied": "Image copied to clipboard",
     "imageCopiedDesc": "You can paste it into chat or documents",
     "exportImageFailed": "Export image failed",

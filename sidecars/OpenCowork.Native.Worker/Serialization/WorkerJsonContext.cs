@@ -170,6 +170,7 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(PluginSessionFindResult))]
 [JsonSerializable(typeof(PluginRouteSessionResult))]
 [JsonSerializable(typeof(List<MessageRow>), TypeInfoPropertyName = "ListMessageRow")]
+[JsonSerializable(typeof(List<MessageLocatorRow>), TypeInfoPropertyName = "ListMessageLocatorRow")]
 [JsonSerializable(typeof(List<MessageContentMatch>), TypeInfoPropertyName = "ListMessageContentMatch")]
 [JsonSerializable(typeof(MessageMutationResult))]
 [JsonSerializable(typeof(MessageDeleteResult))]
