@@ -5,8 +5,6 @@ using System.Text.Json;
 
 internal static partial class AgentRuntimeOpenAIResponsesProvider
 {
-    private const int OpenAIPromptCacheKeyMaxLength = 64;
-
     private static string BuildRequestBody(
         JsonElement parameters,
         JsonElement provider,
@@ -15,6 +13,9 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
     {
         var sanitizedConversation = SanitizeConversationForReplay(conversation);
         var requestConversation = sanitizedConversation.Messages;
+        var promptCacheState = AgentRuntimeOpenAIPromptCache.CreateState(
+            provider,
+            enabledByDefault: true);
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
@@ -50,7 +51,13 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             if (!omitted.Contains("input"))
             {
                 writer.WritePropertyName("input");
-                WriteResponsesInput(writer, provider, requestConversation, inputStartIndex, includeSystemPrompt);
+                WriteResponsesInput(
+                    writer,
+                    provider,
+                    requestConversation,
+                    inputStartIndex,
+                    includeSystemPrompt,
+                    promptCacheState);
             }
             if (!omitted.Contains("stream"))
             {
@@ -97,6 +104,11 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
                 WritePromptCacheKey(writer, provider);
                 omitted.Add("prompt_cache_key");
             }
+            AgentRuntimeOpenAIPromptCache.WriteRequestControls(
+                writer,
+                provider,
+                omitted,
+                promptCacheState);
             AgentRuntimeProviderSupport.WriteBodyOverrides(writer, provider, omitted);
             writer.WriteEndObject();
         }
@@ -108,7 +120,8 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         JsonElement provider,
         IReadOnlyList<AgentRuntimeChatMessage> conversation,
         int startIndex,
-        bool includeSystemPrompt)
+        bool includeSystemPrompt,
+        AgentRuntimeOpenAIPromptCacheState promptCacheState)
     {
         writer.WriteStartArray();
         if (includeSystemPrompt &&
@@ -117,7 +130,17 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             writer.WriteStartObject();
             writer.WriteString("type", "message");
             writer.WriteString("role", "developer");
-            writer.WriteString("content", systemPrompt);
+            writer.WritePropertyName("content");
+            if (promptCacheState.TryUseExplicitBreakpoint())
+            {
+                writer.WriteStartArray();
+                WriteResponsesInputTextPart(writer, systemPrompt, includePromptCacheBreakpoint: true);
+                writer.WriteEndArray();
+            }
+            else
+            {
+                writer.WriteStringValue(systemPrompt);
+            }
             writer.WriteEndObject();
         }
 
@@ -131,7 +154,14 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
             if (message.ContentBlocks is { Count: > 0 } blocks)
             {
-                WriteResponsesContentBlocks(writer, provider, conversation, index, message, blocks);
+                WriteResponsesContentBlocks(
+                    writer,
+                    provider,
+                    conversation,
+                    index,
+                    message,
+                    blocks,
+                    promptCacheState);
                 continue;
             }
 
@@ -142,7 +172,15 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
             if (!string.IsNullOrWhiteSpace(message.Text))
             {
-                WriteResponsesTextMessage(writer, message.Role == "assistant" ? "assistant" : "user", message.Text);
+                var role = message.Role == "assistant" ? "assistant" : "user";
+                WriteResponsesTextMessage(
+                    writer,
+                    role,
+                    message.Text,
+                    role == "user" &&
+                    message.Role == "user" &&
+                    index < conversation.Count - 1 &&
+                    promptCacheState.TryUseExplicitBreakpoint());
             }
 
             foreach (var toolUse in message.ToolUses)
@@ -162,7 +200,8 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         IReadOnlyList<AgentRuntimeChatMessage> conversation,
         int messageIndex,
         AgentRuntimeChatMessage message,
-        IReadOnlyList<JsonElement> blocks)
+        IReadOnlyList<JsonElement> blocks,
+        AgentRuntimeOpenAIPromptCacheState promptCacheState)
     {
         if (message.Role == "user" || message.Role == "tool")
         {
@@ -186,7 +225,11 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
                 }
             }
 
-            WriteResponsesUserPartsMessage(writer, blocks);
+            WriteResponsesUserPartsMessage(
+                writer,
+                blocks,
+                message.Role == "user" && messageIndex < conversation.Count - 1,
+                promptCacheState);
             return;
         }
 
@@ -211,7 +254,11 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         }
     }
 
-    private static void WriteResponsesUserPartsMessage(Utf8JsonWriter writer, IReadOnlyList<JsonElement> blocks)
+    private static void WriteResponsesUserPartsMessage(
+        Utf8JsonWriter writer,
+        IReadOnlyList<JsonElement> blocks,
+        bool allowPromptCacheBreakpoint,
+        AgentRuntimeOpenAIPromptCacheState promptCacheState)
     {
         var parts = new List<JsonElement>();
         foreach (var block in blocks)
@@ -220,7 +267,10 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             {
                 case "text":
                 case "image":
-                    parts.Add(block);
+                    if (CanWriteResponsesUserPart(block))
+                    {
+                        parts.Add(block);
+                    }
                     break;
             }
         }
@@ -234,23 +284,54 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         writer.WriteString("role", "user");
         writer.WritePropertyName("content");
         writer.WriteStartArray();
-        foreach (var part in parts)
+        var breakpointPartIndex = allowPromptCacheBreakpoint ? parts.Count - 1 : -1;
+        for (var index = 0; index < parts.Count; index++)
         {
+            var part = parts[index];
+            var includeBreakpoint =
+                index == breakpointPartIndex &&
+                promptCacheState.TryUseExplicitBreakpoint();
             if (JsonHelpers.GetString(part, "type") == "text")
             {
-                writer.WriteStartObject();
-                writer.WriteString("type", "input_text");
-                writer.WriteString("text", JsonHelpers.GetString(part, "text") ?? string.Empty);
-                writer.WriteEndObject();
+                WriteResponsesInputTextPart(
+                    writer,
+                    JsonHelpers.GetString(part, "text") ?? string.Empty,
+                    includeBreakpoint);
                 continue;
             }
-            WriteResponsesImagePart(writer, part);
+            WriteResponsesImagePart(writer, part, includeBreakpoint);
         }
         writer.WriteEndArray();
         writer.WriteEndObject();
     }
 
-    private static void WriteResponsesImagePart(Utf8JsonWriter writer, JsonElement block)
+    private static bool CanWriteResponsesUserPart(JsonElement block)
+    {
+        return JsonHelpers.GetString(block, "type") == "text" ||
+            (JsonHelpers.GetString(block, "type") == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object);
+    }
+
+    private static void WriteResponsesInputTextPart(
+        Utf8JsonWriter writer,
+        string text,
+        bool includePromptCacheBreakpoint)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("type", "input_text");
+        writer.WriteString("text", text);
+        if (includePromptCacheBreakpoint)
+        {
+            AgentRuntimeOpenAIPromptCache.WriteExplicitBreakpoint(writer);
+        }
+        writer.WriteEndObject();
+    }
+
+    private static void WriteResponsesImagePart(
+        Utf8JsonWriter writer,
+        JsonElement block,
+        bool includePromptCacheBreakpoint)
     {
         if (!block.TryGetProperty("source", out var source) ||
             source.ValueKind != JsonValueKind.Object)
@@ -267,6 +348,10 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             writer.WriteStartObject();
             writer.WriteString("type", "input_text");
             writer.WriteString("text", imageUrl);
+            if (includePromptCacheBreakpoint)
+            {
+                AgentRuntimeOpenAIPromptCache.WriteExplicitBreakpoint(writer);
+            }
             writer.WriteEndObject();
             return;
         }
@@ -274,6 +359,10 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         writer.WriteStartObject();
         writer.WriteString("type", "input_image");
         writer.WriteString("image_url", imageUrl);
+        if (includePromptCacheBreakpoint)
+        {
+            AgentRuntimeOpenAIPromptCache.WriteExplicitBreakpoint(writer);
+        }
         writer.WriteEndObject();
     }
 
@@ -299,7 +388,11 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         return $"data:{mediaType};base64,{AgentRuntimeProviderSupport.StripDataUrlPrefix(data)}";
     }
 
-    private static void WriteResponsesTextMessage(Utf8JsonWriter writer, string role, string? text)
+    private static void WriteResponsesTextMessage(
+        Utf8JsonWriter writer,
+        string role,
+        string? text,
+        bool includePromptCacheBreakpoint = false)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -308,7 +401,17 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         writer.WriteStartObject();
         writer.WriteString("type", "message");
         writer.WriteString("role", role);
-        writer.WriteString("content", text);
+        writer.WritePropertyName("content");
+        if (includePromptCacheBreakpoint && role == "user")
+        {
+            writer.WriteStartArray();
+            WriteResponsesInputTextPart(writer, text, includePromptCacheBreakpoint: true);
+            writer.WriteEndArray();
+        }
+        else
+        {
+            writer.WriteStringValue(text);
+        }
         writer.WriteEndObject();
     }
 
@@ -452,7 +555,23 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
         if (JsonHelpers.GetString(provider, "reasoningEffort") is { Length: > 0 } reasoningEffort)
         {
-            writer.WriteString("effort", reasoningEffort);
+            if (reasoningEffort == "ultra")
+            {
+                // "Ultra" is a gpt-5.6 terra/sol-only tier: it is not a Responses API
+                // effort value but selects the "pro" reasoning mode (maximum reasoning
+                // with automatic subagent task delegation). Effort stays a separate axis
+                // and defaults to medium. Guard on the model so no other model emits it.
+                var ultraModel = JsonHelpers.GetString(provider, "model");
+                if (ultraModel == "gpt-5.6-sol" || ultraModel == "gpt-5.6-terra")
+                {
+                    writer.WriteString("mode", "pro");
+                    writer.WriteString("effort", "medium");
+                }
+            }
+            else
+            {
+                writer.WriteString("effort", reasoningEffort);
+            }
         }
         if (JsonHelpers.GetString(provider, "responseSummary") is { Length: > 0 } summary)
         {
@@ -524,14 +643,14 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             promptCacheKey.GetString() is { } overrideValue &&
             !string.IsNullOrWhiteSpace(overrideValue))
         {
-            return ClampOpenAIPromptCacheKey(overrideValue);
+            return AgentRuntimeOpenAIPromptCache.ClampPromptCacheKey(overrideValue);
         }
 
         var configured = JsonHelpers.GetString(provider, "promptCacheKey");
         var value = !string.IsNullOrWhiteSpace(configured)
             ? configured
             : NativeGlobalPromptCacheKey.Value;
-        return ClampOpenAIPromptCacheKey(value);
+        return AgentRuntimeOpenAIPromptCache.ClampPromptCacheKey(value);
     }
 
     private static string? ResolvePromptCacheKeyHash(JsonElement provider)
@@ -544,28 +663,6 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(hash).ToLowerInvariant()[..16];
-    }
-
-    private static string? ClampOpenAIPromptCacheKey(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var trimmed = value.Trim();
-        var builder = new StringBuilder();
-        var count = 0;
-        foreach (var rune in trimmed.EnumerateRunes())
-        {
-            if (count >= OpenAIPromptCacheKeyMaxLength)
-            {
-                break;
-            }
-            builder.Append(rune.ToString());
-            count++;
-        }
-        return builder.ToString();
     }
 
     private static AgentRuntimeChatToolUse? ReadToolUse(JsonElement block)

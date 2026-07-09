@@ -49,12 +49,20 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
     private static int ReadInt(JsonElement element, string propertyName)
     {
-        if (element.ValueKind == JsonValueKind.Object &&
-            element.TryGetProperty(propertyName, out var property) &&
-            property.ValueKind == JsonValueKind.Number &&
-            property.TryGetInt32(out var value))
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
         {
-            return value;
+            return 0;
+        }
+        if (property.ValueKind == JsonValueKind.Number &&
+            property.TryGetInt64(out var longValue))
+        {
+            return longValue > int.MaxValue ? int.MaxValue : (int)Math.Max(0, longValue);
+        }
+        if (property.ValueKind == JsonValueKind.String &&
+            long.TryParse(property.GetString(), out longValue))
+        {
+            return longValue > int.MaxValue ? int.MaxValue : (int)Math.Max(0, longValue);
         }
         return 0;
     }

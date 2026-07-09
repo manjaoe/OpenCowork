@@ -172,7 +172,7 @@ export const codexOAuthPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -197,7 +197,7 @@ export const codexOAuthPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -222,7 +222,7 @@ export const codexOAuthPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',

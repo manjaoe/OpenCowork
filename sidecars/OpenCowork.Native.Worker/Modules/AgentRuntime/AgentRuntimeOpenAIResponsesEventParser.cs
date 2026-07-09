@@ -513,17 +513,22 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         var inputTokens = ReadFirstPositiveInt(usage, "input_tokens", "prompt_tokens");
         var outputTokens = ReadFirstPositiveInt(usage, "output_tokens", "completion_tokens");
         var cachedTokens = ReadResponsesCacheReadTokens(usage);
+        var cacheWriteTokens = ReadResponsesCacheWriteTokens(usage);
         var reasoningTokens = ReadResponsesReasoningTokens(usage);
         var cacheReadRatio = inputTokens > 0 && cachedTokens > 0
             ? Math.Min(1, cachedTokens / (double)inputTokens)
             : (double?)null;
+        var billableInputTokens = cachedTokens > 0 || cacheWriteTokens > 0
+            ? Math.Max(0, inputTokens - cachedTokens - cacheWriteTokens)
+            : (int?)null;
         return new AgentRuntimeTokenUsage(
             inputTokens,
             outputTokens,
-            cachedTokens > 0 ? Math.Max(0, inputTokens - cachedTokens) : null,
+            billableInputTokens,
             cachedTokens > 0 ? cachedTokens : null,
             reasoningTokens > 0 ? reasoningTokens : null,
             inputTokens,
+            CacheCreationTokens: cacheWriteTokens > 0 ? cacheWriteTokens : null,
             CacheReadRatio: cacheReadRatio);
     }
 
@@ -571,6 +576,37 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
                 if (cachedTokens > 0)
                 {
                     return cachedTokens;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int ReadResponsesCacheWriteTokens(JsonElement usage)
+    {
+        var cacheWriteTokens = ReadFirstPositiveInt(
+            usage,
+            "cache_write_tokens",
+            "cache_write_input_tokens",
+            "cache_creation_tokens",
+            "cache_creation_input_tokens");
+        if (cacheWriteTokens > 0)
+        {
+            return cacheWriteTokens;
+        }
+        foreach (var detailsName in new[] { "input_tokens_details", "prompt_tokens_details" })
+        {
+            if (usage.TryGetProperty(detailsName, out var details))
+            {
+                cacheWriteTokens = ReadFirstPositiveInt(
+                    details,
+                    "cache_write_tokens",
+                    "cache_write_input_tokens",
+                    "cache_creation_tokens",
+                    "cache_creation_input_tokens");
+                if (cacheWriteTokens > 0)
+                {
+                    return cacheWriteTokens;
                 }
             }
         }

@@ -52,9 +52,10 @@ export function getCacheCreationTokens(usage: Partial<TokenUsage> | null | undef
 
 /**
  * Split cache-creation (cache write) tokens into 5-minute and 1-hour TTL buckets.
- * When the provider reports the detailed breakdown (Anthropic's
+ * When a provider reports a detailed breakdown (Anthropic's
  * `cache_creation.ephemeral_5m_input_tokens` / `ephemeral_1h_input_tokens`), those
- * values are used; any remainder between the combined total and the detailed sum is
+ * values are used; OpenAI's `cache_write_tokens` arrives as the combined total with
+ * no TTL split. Any remainder between the combined total and the detailed sum is
  * attributed to the 5-minute bucket (the default ephemeral TTL). When no breakdown is
  * available, the whole combined total is treated as 5-minute. The two buckets always
  * sum back to {@link getCacheCreationTokens}.

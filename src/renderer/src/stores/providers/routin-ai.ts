@@ -650,7 +650,8 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
-      contextLength: 268_000,
+      // Synced with Codex's model catalog: 400K total window − 128K reserved output.
+      contextLength: 372_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
       supportsFunctionCall: false,
@@ -661,7 +662,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -675,7 +676,8 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
-      contextLength: 268_000,
+      // Synced with Codex's model catalog: 400K total window − 128K reserved output.
+      contextLength: 372_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
       supportsFunctionCall: false,
@@ -686,7 +688,9 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        // 'ultra' selects the Responses API "pro" reasoning mode (max reasoning +
+        // automatic subagent task delegation); Terra and Sol expose it.
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -700,7 +704,8 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
-      contextLength: 268_000,
+      // Synced with Codex's model catalog: 400K total window − 128K reserved output.
+      contextLength: 372_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
       supportsFunctionCall: false,
@@ -711,7 +716,9 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        // 'ultra' selects the Responses API "pro" reasoning mode (max reasoning +
+        // automatic subagent task delegation); Terra and Sol expose it.
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',

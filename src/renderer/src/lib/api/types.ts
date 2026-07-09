@@ -16,13 +16,13 @@ export interface TokenUsage {
   outputTokens: number
   /** Normalized non-cached input tokens used for pricing/display when available. */
   billableInputTokens?: number
-  /** Anthropic prompt caching: tokens written to cache */
+  /** Prompt-cache tokens written to cache (Anthropic cache_creation*, OpenAI cache_write_tokens). */
   cacheCreationTokens?: number
   /** Anthropic prompt caching: tokens written to 5m cache */
   cacheCreation5mTokens?: number
   /** Anthropic prompt caching: tokens written to 1h cache */
   cacheCreation1hTokens?: number
-  /** Anthropic prompt caching: tokens read from cache */
+  /** Prompt-cache tokens read from cache (OpenAI cached_tokens). */
   cacheReadTokens?: number
   /** cacheReadTokens / inputTokens for the normalized request usage. */
   cacheReadRatio?: number
@@ -373,7 +373,15 @@ export interface ToolDefinition {
 
 // --- Thinking / Reasoning Config ---
 
-export type ReasoningEffortLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'max' | 'xhigh'
+export type ReasoningEffortLevel =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'max'
+  | 'xhigh'
+  | 'ultra'
 
 export interface ThinkingConfig {
   /** Extra key-value pairs merged into the request body when thinking is enabled */
@@ -710,9 +718,9 @@ export interface ProviderConfig {
   responsesImageGeneration?: ResponsesImageGenerationConfig
   /** Request-scoped image streaming preview control for drawing flows. */
   imageGenerationStream?: ImageGenerationStreamConfig
-  /** OpenAI Responses: enable prompt caching with a stable workspace-scoped key */
+  /** OpenAI-compatible APIs: enable prompt caching with a stable workspace-scoped key */
   enablePromptCache?: boolean
-  /** OpenAI Responses: explicit prompt cache key for this request */
+  /** OpenAI-compatible APIs: explicit prompt cache key for this request */
   promptCacheKey?: string
   /** Whether OpenAI Computer Use should be enabled for this request */
   computerUseEnabled?: boolean

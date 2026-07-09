@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useState as useLocalState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -3669,23 +3669,6 @@ export function InputArea({
     </Tooltip>
   )
 
-  const stopControl = isStreaming && (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={composerIconControlClass}
-          data-tone="warning"
-          onClick={onStop}
-        >
-          <Spinner className="size-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{t('input.stopTooltip')}</TooltipContent>
-    </Tooltip>
-  )
-
   const optimizeControl = !isStreaming && (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -3786,28 +3769,37 @@ export function InputArea({
           size="default"
           className="composer-send rounded-xl px-3.5 transition-[filter,box-shadow] duration-200"
           data-composer-variant={composerVariant}
+          data-tone={isStreaming ? 'warning' : undefined}
           onMouseDown={(event) => {
             event.preventDefault()
           }}
-          onClick={handleSend}
+          onClick={isStreaming ? () => onStop?.() : handleSend}
           disabled={
-            (!finalSerializedText.trim() && attachedImages.length === 0) ||
-            disabled ||
-            needsWorkingFolder ||
-            pendingImageReads > 0 ||
-            isOptimizing
+            isStreaming
+              ? false
+              : (!finalSerializedText.trim() && attachedImages.length === 0) ||
+                disabled ||
+                needsWorkingFolder ||
+                pendingImageReads > 0 ||
+                isOptimizing
           }
+          aria-label={isStreaming ? t('input.stopTooltip') : t('input.sendTooltip')}
         >
-          <>
-            <span>{t('action.start', { ns: 'common' })}</span>
-            <Send className="ml-1.5 size-3.5" />
-          </>
+          {isStreaming ? (
+            <>
+              <Spinner className="mr-1.5 size-3.5" />
+              <span>{t('action.stop', { ns: 'common' })}</span>
+            </>
+          ) : (
+            <>
+              <span>{t('action.start', { ns: 'common' })}</span>
+              <Send className="ml-1.5 size-3.5" />
+            </>
+          )}
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {isStreaming
-          ? t('input.sendTooltipWhileRunning', { defaultValue: 'Send after current run' })
-          : t('input.sendTooltip')}
+        {isStreaming ? t('input.stopTooltip') : t('input.sendTooltip')}
       </TooltipContent>
     </Tooltip>
   )
@@ -4687,7 +4679,6 @@ export function InputArea({
                   </AlertDialog>
                 )}
 
-                {stopControl}
                 {optimizeControl}
                 {permissionControl}
                 {sendControl}

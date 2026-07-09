@@ -346,7 +346,7 @@ export const azureOpenaiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -371,7 +371,7 @@ export const azureOpenaiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -397,7 +397,7 @@ export const azureOpenaiPreset: BuiltinProviderPreset = {
       supportsComputerUse: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',

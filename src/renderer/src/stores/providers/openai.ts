@@ -99,7 +99,8 @@ export const openaiPreset: BuiltinProviderPreset = {
         bodyParams: { reasoning_effort: 'medium' },
         reasoningEffortLevels: ['minimal', 'low', 'medium', 'high'],
         defaultReasoningEffort: 'medium'
-      }
+      },
+      enablePromptCache: true
     },
     {
       id: 'gpt-5-nano',
@@ -119,7 +120,8 @@ export const openaiPreset: BuiltinProviderPreset = {
         bodyParams: { reasoning_effort: 'medium' },
         reasoningEffortLevels: ['minimal', 'low', 'medium', 'high'],
         defaultReasoningEffort: 'medium'
-      }
+      },
+      enablePromptCache: true
     },
     // GPT-5 chat variants (Responses API)
     {
@@ -339,7 +341,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
-      contextLength: 400_000,
+      // Synced with Codex's model catalog: 400K total window − 128K reserved output.
+      contextLength: 272_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
       supportsFunctionCall: false,
@@ -350,7 +353,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -364,7 +367,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
-      contextLength: 1_050_000,
+      // Synced with Codex's model catalog: 400K total window − 128K reserved output.
+      contextLength: 272_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
       supportsFunctionCall: false,
@@ -375,7 +379,9 @@ export const openaiPreset: BuiltinProviderPreset = {
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+        // 'ultra' selects the Responses API "pro" reasoning mode (max reasoning +
+        // automatic subagent task delegation); Terra and Sol expose it.
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -389,7 +395,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
-      contextLength: 1_050_000,
+      // Synced with Codex's model catalog: 400K total window − 128K reserved output.
+      contextLength: 272_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
       supportsFunctionCall: false,
@@ -401,7 +408,9 @@ export const openaiPreset: BuiltinProviderPreset = {
       supportsComputerUse: true,
       thinkingConfig: {
         bodyParams: {},
-        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+        // 'ultra' selects the Responses API "pro" reasoning mode (max reasoning +
+        // automatic subagent task delegation); Terra and Sol expose it.
+        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         defaultReasoningEffort: 'medium'
       },
       responseSummary: 'detailed',
@@ -473,7 +482,8 @@ export const openaiPreset: BuiltinProviderPreset = {
         bodyParams: { reasoning_effort: 'medium' },
         reasoningEffortLevels: ['low', 'medium', 'high'],
         defaultReasoningEffort: 'medium'
-      }
+      },
+      enablePromptCache: true
     },
     {
       id: 'o4-mini',
@@ -493,7 +503,8 @@ export const openaiPreset: BuiltinProviderPreset = {
         bodyParams: { reasoning_effort: 'medium' },
         reasoningEffortLevels: ['low', 'medium', 'high'],
         defaultReasoningEffort: 'medium'
-      }
+      },
+      enablePromptCache: true
     },
     {
       id: 'o3-mini',
@@ -513,7 +524,8 @@ export const openaiPreset: BuiltinProviderPreset = {
         bodyParams: { reasoning_effort: 'medium' },
         reasoningEffortLevels: ['low', 'medium', 'high'],
         defaultReasoningEffort: 'medium'
-      }
+      },
+      enablePromptCache: true
     },
     // GPT-4.1 family (cache: 75% off input)
     {
@@ -528,7 +540,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       inputPrice: 2,
       outputPrice: 8,
       cacheCreationPrice: 2,
-      cacheHitPrice: 0.5
+      cacheHitPrice: 0.5,
+      enablePromptCache: true
     },
     {
       id: 'gpt-4.1-mini',
@@ -542,7 +555,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       inputPrice: 0.4,
       outputPrice: 1.6,
       cacheCreationPrice: 0.4,
-      cacheHitPrice: 0.1
+      cacheHitPrice: 0.1,
+      enablePromptCache: true
     },
     {
       id: 'gpt-4.1-nano',
@@ -556,7 +570,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       inputPrice: 0.1,
       outputPrice: 0.4,
       cacheCreationPrice: 0.1,
-      cacheHitPrice: 0.025
+      cacheHitPrice: 0.025,
+      enablePromptCache: true
     },
     // GPT-4o family (cache: 50% off input)
     {
@@ -571,7 +586,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       inputPrice: 2.5,
       outputPrice: 10,
       cacheCreationPrice: 2.5,
-      cacheHitPrice: 1.25
+      cacheHitPrice: 1.25,
+      enablePromptCache: true
     },
     {
       id: 'gpt-4o-mini',
@@ -585,7 +601,8 @@ export const openaiPreset: BuiltinProviderPreset = {
       inputPrice: 0.15,
       outputPrice: 0.6,
       cacheCreationPrice: 0.15,
-      cacheHitPrice: 0.075
+      cacheHitPrice: 0.075,
+      enablePromptCache: true
     },
     // Speech & transcription
     {

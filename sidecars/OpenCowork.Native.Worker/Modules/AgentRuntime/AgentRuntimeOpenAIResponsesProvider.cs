@@ -139,7 +139,8 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             WorkerLog.Debug(
                 "responses provider usage " +
                 $"transport={transport} inputTokens={usage.InputTokens} outputTokens={usage.OutputTokens} " +
-                $"cacheReadTokens={usage.CacheReadTokens ?? 0} billableInputTokens={usage.BillableInputTokens ?? usage.InputTokens} " +
+                $"cacheReadTokens={usage.CacheReadTokens ?? 0} cacheCreationTokens={usage.CacheCreationTokens ?? 0} " +
+                $"billableInputTokens={usage.BillableInputTokens ?? usage.InputTokens} " +
                 $"reasoningTokens={usage.ReasoningTokens ?? 0}");
         }
         await AgentRuntimeTools.EmitAsync(

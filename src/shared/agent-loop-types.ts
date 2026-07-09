@@ -27,11 +27,13 @@ export interface AgentTokenUsage {
   inputTokens: number
   outputTokens: number
   billableInputTokens?: number
+  /** Prompt-cache tokens written to cache (Anthropic cache_creation*, OpenAI cache_write_tokens). */
   cacheCreationTokens?: number
   cacheCreation5mTokens?: number
   cacheCreation1hTokens?: number
+  /** Prompt-cache tokens read from cache (OpenAI cached_tokens). */
   cacheReadTokens?: number
-  /** cacheReadTokens / (billableInputTokens + cacheReadTokens) */
+  /** cacheReadTokens / inputTokens for the normalized request usage. */
   cacheReadRatio?: number
   reasoningTokens?: number
   contextTokens?: number

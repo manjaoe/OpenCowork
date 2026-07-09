@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.10] - 2026-07-10
+
+### Added
+
+- Added model-aware prompt cache controls for OpenAI-compatible Responses and Chat APIs, including stable cache keys, retention settings, explicit breakpoints, and cache write/read token accounting.
+- Added native file-tool recovery for operating-system permission failures, allowing users to grant scoped folder access and retry read, write, edit, notebook, list, glob, and grep operations.
+- Added the `ultra` reasoning-effort level and refreshed saved provider model capabilities when built-in reasoning presets gain new levels.
+
+### Changed
+
+- Unified the composer send and stop actions so the primary button stops an active run and returns to sending when idle.
+- Improved reasoning-effort presentation with clearer maximum-level effects and provider-specific defaults.
+- Normalized prompt-cache usage and billing calculations across chat context totals, analytics, and exported conversations.
+- Simplified home and project composers by hiding the duplicate working-folder picker while retaining folder selection in the surrounding page.
+
+### Fixed
+
+- Persisted completed or interrupted results for dangling tool calls after stops, errors, or worker crashes so continuation does not silently replay long-running tools or sub-agents.
+- Improved native sub-agent and tool-call continuation handling to preserve streamed arguments, results, and terminal state across Responses and Chat API runs.
+- Filtered invalid Responses input parts and improved reasoning and cache-usage event parsing for OpenAI-compatible providers.
+
 ## [1.0.9] - 2026-07-09
 
 ### Added

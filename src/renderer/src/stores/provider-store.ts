@@ -251,6 +251,33 @@ function sortManagedModels(models: ManagedModelConfig[]): ManagedModelConfig[] {
   })
 }
 
+/**
+ * Effort levels are capability enums that evolve with the builtin presets. Persisted
+ * snapshots saved before new levels existed would otherwise pin the old list forever
+ * (mergeMissingValue never touches existing arrays), so adopt the canonical list whenever
+ * the saved one is a strict subset of it. Lists carrying levels the preset doesn't know
+ * (user customizations) are left untouched.
+ */
+function reconcileReasoningEffortLevels<T extends AIModelConfig>(
+  model: T,
+  canonical: AIModelConfig
+): T {
+  const canonicalLevels = canonical.thinkingConfig?.reasoningEffortLevels
+  const savedLevels = model.thinkingConfig?.reasoningEffortLevels
+  if (!canonicalLevels?.length || !savedLevels?.length) return model
+  if (savedLevels.length >= canonicalLevels.length) return model
+  const canonicalSet = new Set(canonicalLevels)
+  if (!savedLevels.every((level) => canonicalSet.has(level))) return model
+  return {
+    ...model,
+    thinkingConfig: {
+      ...model.thinkingConfig,
+      bodyParams: model.thinkingConfig?.bodyParams ?? {},
+      reasoningEffortLevels: [...canonicalLevels]
+    }
+  }
+}
+
 export function buildProviderModelSnapshot(
   model: AIModelConfig,
   options: {
@@ -263,19 +290,29 @@ export function buildProviderModelSnapshot(
   const existingModel = options.existingModel ? cloneModelConfig(options.existingModel) : null
 
   if (existingModel) {
-    return omitUnsupportedDisabledThinkingParams({
-      ...baseModel,
-      ...(managedModel ?? {}),
-      ...existingModel,
-      enabled: existingModel.enabled
-    })
+    return omitUnsupportedDisabledThinkingParams(
+      reconcileReasoningEffortLevels(
+        {
+          ...baseModel,
+          ...(managedModel ?? {}),
+          ...existingModel,
+          enabled: existingModel.enabled
+        },
+        baseModel
+      )
+    )
   }
 
   if (managedModel) {
-    return omitUnsupportedDisabledThinkingParams({
-      ...baseModel,
-      ...managedModel
-    })
+    return omitUnsupportedDisabledThinkingParams(
+      reconcileReasoningEffortLevels(
+        {
+          ...baseModel,
+          ...managedModel
+        },
+        baseModel
+      )
+    )
   }
 
   return omitUnsupportedDisabledThinkingParams(baseModel)
@@ -1551,8 +1588,9 @@ function syncManagedModelsWithBuiltins(): void {
     }
 
     const result = mergeManagedModelMissingFields(managedModels[existingIndex], builtinModel)
-    if (result.changed) {
-      managedModels[existingIndex] = result.model
+    const reconciled = reconcileReasoningEffortLevels(result.model, builtinModel)
+    if (result.changed || reconciled !== result.model) {
+      managedModels[existingIndex] = reconciled
       changed = true
     }
   }

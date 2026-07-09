@@ -155,15 +155,17 @@ function appendMessageMarkdown(lines: string[], msg: UnifiedMessage, totals: Tok
     lines.push('')
     const extras: string[] = []
     const billableInput = getBillableInputTokens(msg.usage)
+    const cacheCreation = getCacheCreationTokens(msg.usage)
     if (msg.usage.cacheReadTokens) {
       const cacheTokenShare = getCacheHitRate(
         billableInput,
         msg.usage.cacheReadTokens,
-        getCacheCreationTokens(msg.usage)
+        cacheCreation
       )
       extras.push(`${msg.usage.cacheReadTokens} cached`)
       extras.push(`${formatCacheHitRate(cacheTokenShare)} cached token share`)
     }
+    if (cacheCreation > 0) extras.push(`${cacheCreation} cache write`)
     if (msg.usage.reasoningTokens) extras.push(`${msg.usage.reasoningTokens} reasoning`)
     lines.push(
       `<sub>Tokens: ${billableInput} in / ${msg.usage.outputTokens} out${extras.length > 0 ? ` / ${extras.join(' / ')}` : ''}</sub>`
@@ -172,7 +174,7 @@ function appendMessageMarkdown(lines: string[], msg: UnifiedMessage, totals: Tok
     totals.input += billableInput
     totals.output += msg.usage.outputTokens
     if (msg.usage.cacheReadTokens) totals.cacheRead += msg.usage.cacheReadTokens
-    if (msg.usage.cacheCreationTokens) totals.cacheCreation += msg.usage.cacheCreationTokens
+    if (cacheCreation > 0) totals.cacheCreation += cacheCreation
     if (msg.usage.reasoningTokens) totals.reasoning += msg.usage.reasoningTokens
   }
   lines.push('')

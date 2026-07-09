@@ -43,6 +43,7 @@ internal static class OpenAIChatRuntime
 
         var wireConversation = ApplyRequestContexts(ReadWireConversation(parameters), parameters);
         var conversation = ReadConversation(wireConversation);
+        AgentRuntimeSubAgentExecutor.OnMainLoopStart(parameters, wireConversation, state);
         var runtimeParameters = CreateRuntimeParametersWithoutMessages(parameters);
         state.ReplaceParameters(runtimeParameters);
         parameters = runtimeParameters;
@@ -1034,52 +1035,169 @@ internal static class OpenAIChatRuntime
     {
         var toolResults = new List<AgentRuntimeToolResult>(toolCalls.Count);
         var hookContextTexts = new List<string>();
-        foreach (var originalCall in toolCalls)
+        for (var index = 0; index < toolCalls.Count;)
         {
-            var call = originalCall;
-            var nativeTool = AgentRuntimeNativeToolExecutor.CanExecute(call.Name, parameters);
-            WorkerLog.Debug(
-                $"agent tool dispatch runId={state.RunId} tool={call.Name} id={call.Id} " +
-                $"executionPath={(nativeTool ? "native-aot" : "native-missing")}");
-            var requiresApproval = JsonHelpers.GetBool(parameters, "forceApproval", false) ||
-                (nativeTool && AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters));
-
-            var preHook = await AgentRuntimeHooks.RunPreToolUseAsync(
-                parameters,
-                state,
-                context,
-                call,
-                requiresApproval);
-            AppendHookContextText(hookContextTexts, preHook);
-            if (preHook.UpdatedInput.HasValue && preHook.UpdatedInput.Value.ValueKind == JsonValueKind.Object)
+            if (IsParallelSubAgentTaskCall(toolCalls[index], parameters))
             {
-                call = call with { Input = preHook.UpdatedInput.Value.Clone() };
-                nativeTool = AgentRuntimeNativeToolExecutor.CanExecute(call.Name, parameters);
-                requiresApproval = JsonHelpers.GetBool(parameters, "forceApproval", false) ||
-                    (nativeTool && AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters));
-            }
-            var pendingCall = new AgentRuntimeToolCallState(
-                call.Id,
-                call.Name,
-                call.Input,
-                requiresApproval ? "pending_approval" : "running",
-                RequiresApproval: requiresApproval);
+                var blockStart = index;
+                while (index < toolCalls.Count && IsParallelSubAgentTaskCall(toolCalls[index], parameters))
+                {
+                    index++;
+                }
 
+                var blockLength = index - blockStart;
+                if (blockLength > 1)
+                {
+                    var blockResult = await ExecuteParallelSubAgentTaskBlockAsync(
+                        parameters,
+                        toolCalls
+                            .Skip(blockStart)
+                            .Take(blockLength)
+                            .ToArray(),
+                        state,
+                        context);
+                    toolResults.AddRange(blockResult.ToolResults);
+                    hookContextTexts.AddRange(blockResult.HookContextTexts);
+                    if (blockResult.ShouldStop)
+                    {
+                        break;
+                    }
+                    continue;
+                }
+
+                index = blockStart;
+            }
+
+            var singleResult = await ExecuteSingleToolCallAsync(
+                parameters,
+                toolCalls[index],
+                state,
+                context);
+            toolResults.Add(singleResult.ToolResult);
+            hookContextTexts.AddRange(singleResult.HookContextTexts);
+            index++;
+            if (singleResult.ShouldStop)
+            {
+                break;
+            }
+        }
+
+        return new AgentRuntimeToolExecutionResult(toolResults, hookContextTexts);
+    }
+
+    private static bool IsParallelSubAgentTaskCall(
+        AgentRuntimeNativeToolCall call,
+        JsonElement parameters)
+    {
+        return !JsonHelpers.GetBool(parameters, "forceApproval", false) &&
+            AgentRuntimeSubAgentExecutor.IsTaskTool(call.Name) &&
+            !JsonHelpers.GetBool(call.Input, "run_in_background", false);
+    }
+
+    private static async Task<AgentRuntimeParallelToolExecutionResult> ExecuteParallelSubAgentTaskBlockAsync(
+        JsonElement parameters,
+        IReadOnlyList<AgentRuntimeNativeToolCall> calls,
+        AgentRuntimeTools.AgentRuntimeRunState state,
+        WorkerRequestContext context)
+    {
+        WorkerLog.Debug(
+            $"agent sub-agent parallel block runId={state.RunId} count={calls.Count} " +
+            $"toolUseIds={string.Join(',', calls.Select(call => call.Id))}");
+        var tasks = calls
+            .Select(call => ExecuteSingleToolCallAsync(parameters, call, state, context))
+            .ToArray();
+        var results = await Task.WhenAll(tasks);
+        return new AgentRuntimeParallelToolExecutionResult(
+            results.Select(result => result.ToolResult).ToList(),
+            results.SelectMany(result => result.HookContextTexts).ToList(),
+            results.Any(result => result.ShouldStop));
+    }
+
+    private static async Task<AgentRuntimeSingleToolExecutionResult> ExecuteSingleToolCallAsync(
+        JsonElement parameters,
+        AgentRuntimeNativeToolCall originalCall,
+        AgentRuntimeTools.AgentRuntimeRunState state,
+        WorkerRequestContext context)
+    {
+        var hookContextTexts = new List<string>();
+        var call = originalCall;
+        var nativeTool = AgentRuntimeNativeToolExecutor.CanExecute(call.Name, parameters);
+        WorkerLog.Debug(
+            $"agent tool dispatch runId={state.RunId} tool={call.Name} id={call.Id} " +
+            $"executionPath={(nativeTool ? "native-aot" : "native-missing")}");
+        var requiresApproval = JsonHelpers.GetBool(parameters, "forceApproval", false) ||
+            (nativeTool && AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters));
+
+        var preHook = await AgentRuntimeHooks.RunPreToolUseAsync(
+            parameters,
+            state,
+            context,
+            call,
+            requiresApproval);
+        AppendHookContextText(hookContextTexts, preHook);
+        if (preHook.UpdatedInput.HasValue && preHook.UpdatedInput.Value.ValueKind == JsonValueKind.Object)
+        {
+            call = call with { Input = preHook.UpdatedInput.Value.Clone() };
+            nativeTool = AgentRuntimeNativeToolExecutor.CanExecute(call.Name, parameters);
+            requiresApproval = JsonHelpers.GetBool(parameters, "forceApproval", false) ||
+                (nativeTool && AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters));
+        }
+        var pendingCall = new AgentRuntimeToolCallState(
+            call.Id,
+            call.Name,
+            call.Input,
+            requiresApproval ? "pending_approval" : "running",
+            RequiresApproval: requiresApproval);
+
+        await AgentRuntimeTools.EmitAsync(
+            state,
+            context,
+            new AgentRuntimeStreamEvent(
+                "tool_use_generated",
+                ToolUseBlock: new AgentRuntimeToolUseBlock(
+                    call.Id,
+                    call.Name,
+                    call.Input,
+                    call.ExtraContent)));
+
+        if (preHook.Blocked)
+        {
+            var blockedContent = CreateStringElement(preHook.Reason ?? "Blocked by PreToolUse hook");
+            var blockedAt = NowMs();
             await AgentRuntimeTools.EmitAsync(
                 state,
                 context,
                 new AgentRuntimeStreamEvent(
-                    "tool_use_generated",
-                    ToolUseBlock: new AgentRuntimeToolUseBlock(
+                    "tool_call_result",
+                    ToolCall: new AgentRuntimeToolCallState(
                         call.Id,
                         call.Name,
                         call.Input,
-                        call.ExtraContent)));
+                        "error",
+                        blockedContent,
+                        preHook.Reason ?? "Blocked by PreToolUse hook",
+                        requiresApproval,
+                        blockedAt,
+                        blockedAt)));
+            return new AgentRuntimeSingleToolExecutionResult(
+                new AgentRuntimeToolResult(call.Id, blockedContent, true),
+                hookContextTexts,
+                true);
+        }
 
-            if (preHook.Blocked)
+        if (requiresApproval)
+        {
+            await AgentRuntimeTools.EmitAsync(
+                state,
+                context,
+                new AgentRuntimeStreamEvent("tool_call_approval_needed", ToolCall: pendingCall));
+
+            var approval = await RequestApprovalAsync(parameters, pendingCall, state, context);
+            if (!approval.Approved)
             {
-                var blockedContent = CreateStringElement(preHook.Reason ?? "Blocked by PreToolUse hook");
-                var blockedAt = NowMs();
+                var deniedReason = approval.Reason ?? "Permission denied by user";
+                var deniedContent = CreateStringElement(deniedReason);
+                var deniedAt = NowMs();
                 await AgentRuntimeTools.EmitAsync(
                     state,
                     context,
@@ -1090,120 +1208,86 @@ internal static class OpenAIChatRuntime
                             call.Name,
                             call.Input,
                             "error",
-                            blockedContent,
-                            preHook.Reason ?? "Blocked by PreToolUse hook",
-                            requiresApproval,
-                            blockedAt,
-                            blockedAt)));
-                toolResults.Add(new AgentRuntimeToolResult(call.Id, blockedContent, true));
-                break;
-            }
-
-            if (requiresApproval)
-            {
-                await AgentRuntimeTools.EmitAsync(
-                    state,
-                    context,
-                    new AgentRuntimeStreamEvent("tool_call_approval_needed", ToolCall: pendingCall));
-
-                var approval = await RequestApprovalAsync(parameters, pendingCall, state, context);
-                if (!approval.Approved)
-                {
-                    var deniedReason = approval.Reason ?? "Permission denied by user";
-                    var deniedContent = CreateStringElement(deniedReason);
-                    var deniedAt = NowMs();
-                    await AgentRuntimeTools.EmitAsync(
-                        state,
-                        context,
-                        new AgentRuntimeStreamEvent(
-                            "tool_call_result",
-                            ToolCall: new AgentRuntimeToolCallState(
-                                call.Id,
-                                call.Name,
-                                call.Input,
-                                "error",
-                                deniedContent,
-                                deniedReason,
-                                true,
-                                deniedAt,
-                                deniedAt)));
-                    toolResults.Add(new AgentRuntimeToolResult(call.Id, deniedContent, true));
-                    continue;
-                }
-            }
-
-            var startedAt = NowMs();
-            await AgentRuntimeTools.EmitAsync(
-                state,
-                context,
-                new AgentRuntimeStreamEvent(
-                    "tool_call_start",
-                    ToolCall: new AgentRuntimeToolCallState(
-                        call.Id,
-                        call.Name,
-                        call.Input,
-                        "running",
-                        RequiresApproval: requiresApproval,
-                        StartedAt: startedAt)));
-
-            var result = nativeTool
-                ? await AgentRuntimeNativeToolExecutor.ExecuteAsync(
-                    new NativeToolCallView(call.Id, call.Name, call.Input),
-                    parameters,
-                    state,
-                    context,
-                    state.CancellationToken)
-                : CreateMissingNativeToolResult(call.Name);
-            var completedAt = NowMs();
-            var status = result.IsError ? "error" : "completed";
-            var boundedContent = LimitToolResultContent(result.Content);
-            var hookToolResponse = RemoveImageDataForHookPayload(boundedContent);
-            var postHook = await AgentRuntimeHooks.RunPostToolUseAsync(
-                parameters,
-                state,
-                context,
-                call,
-                hookToolResponse,
-                result.IsError);
-            AppendHookContextText(hookContextTexts, postHook);
-            if (postHook.ReplacementToolFeedback.HasValue)
-            {
-                boundedContent = LimitToolResultContent(postHook.ReplacementToolFeedback.Value);
-                result = result with { IsError = false, Error = null };
-                status = "completed";
-            }
-            if (postHook.Blocked)
-            {
-                boundedContent = CreateStringElement(postHook.Reason ?? "Blocked by PostToolUse hook");
-                result = result with { IsError = true, Error = postHook.Reason ?? "Blocked by PostToolUse hook" };
-                status = "error";
-            }
-            await AgentRuntimeTools.EmitAsync(
-                state,
-                context,
-                new AgentRuntimeStreamEvent(
-                    "tool_call_result",
-                    ToolCall: new AgentRuntimeToolCallState(
-                        call.Id,
-                        call.Name,
-                        call.Input,
-                        status,
-                        boundedContent,
-                        result.Error,
-                        requiresApproval,
-                        startedAt,
-                        completedAt)));
-            toolResults.Add(new AgentRuntimeToolResult(
-                call.Id,
-                boundedContent,
-                result.IsError ? true : null));
-            if (postHook.Blocked)
-            {
-                break;
+                            deniedContent,
+                            deniedReason,
+                            true,
+                            deniedAt,
+                            deniedAt)));
+                return new AgentRuntimeSingleToolExecutionResult(
+                    new AgentRuntimeToolResult(call.Id, deniedContent, true),
+                    hookContextTexts,
+                    false);
             }
         }
 
-        return new AgentRuntimeToolExecutionResult(toolResults, hookContextTexts);
+        var startedAt = NowMs();
+        await AgentRuntimeTools.EmitAsync(
+            state,
+            context,
+            new AgentRuntimeStreamEvent(
+                "tool_call_start",
+                ToolCall: new AgentRuntimeToolCallState(
+                    call.Id,
+                    call.Name,
+                    call.Input,
+                    "running",
+                    RequiresApproval: requiresApproval,
+                    StartedAt: startedAt)));
+
+        var result = nativeTool
+            ? await AgentRuntimeNativeToolExecutor.ExecuteAsync(
+                new NativeToolCallView(call.Id, call.Name, call.Input),
+                parameters,
+                state,
+                context,
+                state.CancellationToken)
+            : CreateMissingNativeToolResult(call.Name);
+        var completedAt = NowMs();
+        var status = result.IsError ? "error" : "completed";
+        var boundedContent = LimitToolResultContent(result.Content);
+        var hookToolResponse = RemoveImageDataForHookPayload(boundedContent);
+        var postHook = await AgentRuntimeHooks.RunPostToolUseAsync(
+            parameters,
+            state,
+            context,
+            call,
+            hookToolResponse,
+            result.IsError);
+        AppendHookContextText(hookContextTexts, postHook);
+        if (postHook.ReplacementToolFeedback.HasValue)
+        {
+            boundedContent = LimitToolResultContent(postHook.ReplacementToolFeedback.Value);
+            result = result with { IsError = false, Error = null };
+            status = "completed";
+        }
+        if (postHook.Blocked)
+        {
+            boundedContent = CreateStringElement(postHook.Reason ?? "Blocked by PostToolUse hook");
+            result = result with { IsError = true, Error = postHook.Reason ?? "Blocked by PostToolUse hook" };
+            status = "error";
+        }
+        await AgentRuntimeTools.EmitAsync(
+            state,
+            context,
+            new AgentRuntimeStreamEvent(
+                "tool_call_result",
+                ToolCall: new AgentRuntimeToolCallState(
+                    call.Id,
+                    call.Name,
+                    call.Input,
+                    status,
+                    boundedContent,
+                    result.Error,
+                    requiresApproval,
+                    startedAt,
+                    completedAt)));
+        return new AgentRuntimeSingleToolExecutionResult(
+            new AgentRuntimeToolResult(
+                call.Id,
+                boundedContent,
+                result.IsError ? true : null),
+            hookContextTexts,
+            postHook.Blocked);
     }
 
     private static void AppendHookContextText(List<string> target, AgentRuntimeHookResult hookResult)
@@ -1261,6 +1345,16 @@ internal static class OpenAIChatRuntime
     private sealed record AgentRuntimeToolExecutionResult(
         List<AgentRuntimeToolResult> ToolResults,
         List<string> HookContextTexts);
+
+    private sealed record AgentRuntimeParallelToolExecutionResult(
+        List<AgentRuntimeToolResult> ToolResults,
+        List<string> HookContextTexts,
+        bool ShouldStop);
+
+    private sealed record AgentRuntimeSingleToolExecutionResult(
+        AgentRuntimeToolResult ToolResult,
+        List<string> HookContextTexts,
+        bool ShouldStop);
 
     private static RendererToolResult CreateMissingNativeToolResult(string toolName)
     {
@@ -1407,6 +1501,9 @@ internal static class OpenAIChatRuntime
         IReadOnlyList<AgentRuntimeChatMessage> conversation)
     {
         var buffer = new ArrayBufferWriter<byte>();
+        var promptCacheState = AgentRuntimeOpenAIPromptCache.CreateState(
+            provider,
+            enabledByDefault: false);
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
             var omitted = GetOmittedBodyKeys(provider);
@@ -1418,7 +1515,7 @@ internal static class OpenAIChatRuntime
             if (!omitted.Contains("messages"))
             {
                 writer.WritePropertyName("messages");
-                WriteMessages(writer, conversation, provider);
+                WriteMessages(writer, conversation, provider, promptCacheState);
             }
             if (!omitted.Contains("stream"))
             {
@@ -1458,6 +1555,16 @@ internal static class OpenAIChatRuntime
                 writer.WriteString("service_tier", serviceTier);
             }
 
+            if (!omitted.Contains("prompt_cache_key") &&
+                TryWritePromptCacheKey(writer, provider))
+            {
+                omitted.Add("prompt_cache_key");
+            }
+            AgentRuntimeOpenAIPromptCache.WriteRequestControls(
+                writer,
+                provider,
+                omitted,
+                promptCacheState);
             WriteThinkingConfig(writer, provider, omitted);
             ApplyBodyOverrides(writer, provider, omitted);
 
@@ -1470,19 +1577,31 @@ internal static class OpenAIChatRuntime
     private static void WriteMessages(
         Utf8JsonWriter writer,
         IReadOnlyList<AgentRuntimeChatMessage> messages,
-        JsonElement provider)
+        JsonElement provider,
+        AgentRuntimeOpenAIPromptCacheState promptCacheState)
     {
         writer.WriteStartArray();
         if (JsonHelpers.GetString(provider, "systemPrompt") is { Length: > 0 } systemPrompt)
         {
             writer.WriteStartObject();
             writer.WriteString("role", "system");
-            writer.WriteString("content", systemPrompt);
+            writer.WritePropertyName("content");
+            if (promptCacheState.TryUseExplicitBreakpoint())
+            {
+                writer.WriteStartArray();
+                WriteChatTextPart(writer, systemPrompt, includePromptCacheBreakpoint: true);
+                writer.WriteEndArray();
+            }
+            else
+            {
+                writer.WriteStringValue(systemPrompt);
+            }
             writer.WriteEndObject();
         }
 
-        foreach (var message in messages)
+        for (var messageIndex = 0; messageIndex < messages.Count; messageIndex++)
         {
+            var message = messages[messageIndex];
             if (message.Role == "system")
             {
                 continue;
@@ -1500,12 +1619,26 @@ internal static class OpenAIChatRuntime
 
             if (message.Role == "user")
             {
+                var allowPromptCacheBreakpoint = messageIndex < messages.Count - 1;
+                if (promptCacheState.SupportsPromptCacheOptions &&
+                    message.ContentBlocks is { Count: > 0 } blocks &&
+                    WriteChatUserPartsMessage(
+                        writer,
+                        blocks,
+                        allowPromptCacheBreakpoint,
+                        promptCacheState))
+                {
+                    continue;
+                }
+
                 if (!string.IsNullOrWhiteSpace(message.Text))
                 {
-                    writer.WriteStartObject();
-                    writer.WriteString("role", "user");
-                    writer.WriteString("content", message.Text);
-                    writer.WriteEndObject();
+                    WriteChatTextMessage(
+                        writer,
+                        "user",
+                        message.Text,
+                        allowPromptCacheBreakpoint &&
+                        promptCacheState.TryUseExplicitBreakpoint());
                 }
                 continue;
             }
@@ -1552,6 +1685,154 @@ internal static class OpenAIChatRuntime
         }
 
         writer.WriteEndArray();
+    }
+
+    private static void WriteChatTextMessage(
+        Utf8JsonWriter writer,
+        string role,
+        string text,
+        bool includePromptCacheBreakpoint)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("role", role);
+        writer.WritePropertyName("content");
+        if (includePromptCacheBreakpoint && role == "user")
+        {
+            writer.WriteStartArray();
+            WriteChatTextPart(writer, text, includePromptCacheBreakpoint: true);
+            writer.WriteEndArray();
+        }
+        else
+        {
+            writer.WriteStringValue(text);
+        }
+        writer.WriteEndObject();
+    }
+
+    private static bool WriteChatUserPartsMessage(
+        Utf8JsonWriter writer,
+        IReadOnlyList<JsonElement> blocks,
+        bool allowPromptCacheBreakpoint,
+        AgentRuntimeOpenAIPromptCacheState promptCacheState)
+    {
+        var parts = new List<JsonElement>();
+        foreach (var block in blocks)
+        {
+            switch (JsonHelpers.GetString(block, "type"))
+            {
+                case "text":
+                    parts.Add(block);
+                    break;
+                case "image":
+                    if (block.TryGetProperty("source", out var source) &&
+                        source.ValueKind == JsonValueKind.Object)
+                    {
+                        parts.Add(block);
+                    }
+                    break;
+            }
+        }
+        if (parts.Count == 0)
+        {
+            return false;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("role", "user");
+        writer.WritePropertyName("content");
+        writer.WriteStartArray();
+        var breakpointPartIndex = allowPromptCacheBreakpoint ? parts.Count - 1 : -1;
+        for (var index = 0; index < parts.Count; index++)
+        {
+            var part = parts[index];
+            var includeBreakpoint =
+                index == breakpointPartIndex &&
+                promptCacheState.TryUseExplicitBreakpoint();
+            if (JsonHelpers.GetString(part, "type") == "text")
+            {
+                WriteChatTextPart(
+                    writer,
+                    JsonHelpers.GetString(part, "text") ?? string.Empty,
+                    includeBreakpoint);
+                continue;
+            }
+            WriteChatImagePart(writer, part, includeBreakpoint);
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        return true;
+    }
+
+    private static void WriteChatTextPart(
+        Utf8JsonWriter writer,
+        string text,
+        bool includePromptCacheBreakpoint)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("type", "text");
+        writer.WriteString("text", text);
+        if (includePromptCacheBreakpoint)
+        {
+            AgentRuntimeOpenAIPromptCache.WriteExplicitBreakpoint(writer);
+        }
+        writer.WriteEndObject();
+    }
+
+    private static void WriteChatImagePart(
+        Utf8JsonWriter writer,
+        JsonElement block,
+        bool includePromptCacheBreakpoint)
+    {
+        if (!block.TryGetProperty("source", out var source) ||
+            source.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var imageUrl = BuildChatImageUrl(source);
+        if (string.IsNullOrWhiteSpace(imageUrl))
+        {
+            imageUrl = JsonHelpers.GetString(source, "filePath") is { Length: > 0 } filePath
+                ? $"[image] {filePath}"
+                : "[image]";
+            WriteChatTextPart(writer, imageUrl, includePromptCacheBreakpoint);
+            return;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("type", "image_url");
+        writer.WritePropertyName("image_url");
+        writer.WriteStartObject();
+        writer.WriteString("url", imageUrl);
+        writer.WriteEndObject();
+        if (includePromptCacheBreakpoint)
+        {
+            AgentRuntimeOpenAIPromptCache.WriteExplicitBreakpoint(writer);
+        }
+        writer.WriteEndObject();
+    }
+
+    private static string BuildChatImageUrl(JsonElement source)
+    {
+        var sourceType = JsonHelpers.GetString(source, "type");
+        if (sourceType == "url")
+        {
+            return JsonHelpers.GetString(source, "url") ?? string.Empty;
+        }
+        if (sourceType != "base64")
+        {
+            return string.Empty;
+        }
+
+        var data = JsonHelpers.GetString(source, "data");
+        if (string.IsNullOrWhiteSpace(data))
+        {
+            return string.Empty;
+        }
+        var mediaType = JsonHelpers.GetString(source, "mediaType") ??
+            AgentRuntimeProviderSupport.DetectImageMediaTypeFromBase64(data) ??
+            "image/png";
+        return $"data:{mediaType};base64,{AgentRuntimeProviderSupport.StripDataUrlPrefix(data)}";
     }
 
     private static void WriteToolResultContent(Utf8JsonWriter writer, JsonElement content)
@@ -1987,6 +2268,21 @@ internal static class OpenAIChatRuntime
         {
             writer.WriteString("reasoning_effort", reasoningEffort);
         }
+    }
+
+    private static bool TryWritePromptCacheKey(Utf8JsonWriter writer, JsonElement provider)
+    {
+        var configured =
+            AgentRuntimeOpenAIPromptCache.ResolveBodyOverrideString(provider, "prompt_cache_key") ??
+            JsonHelpers.GetString(provider, "promptCacheKey");
+        var value = AgentRuntimeOpenAIPromptCache.ClampPromptCacheKey(configured);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        writer.WriteString("prompt_cache_key", value);
+        return true;
     }
 
     private static void ApplyBodyOverrides(
@@ -3172,24 +3468,124 @@ internal static class OpenAIChatRuntime
     {
         var inputTokens = ReadInt(usage, "prompt_tokens");
         var outputTokens = ReadInt(usage, "completion_tokens");
-        var cachedTokens = 0;
-        var reasoningTokens = 0;
-        if (usage.TryGetProperty("prompt_tokens_details", out var promptDetails))
-        {
-            cachedTokens = ReadInt(promptDetails, "cached_tokens");
-        }
-        if (usage.TryGetProperty("completion_tokens_details", out var completionDetails))
-        {
-            reasoningTokens = ReadInt(completionDetails, "reasoning_tokens");
-        }
+        var cachedTokens = ReadChatCacheReadTokens(usage);
+        var cacheWriteTokens = ReadChatCacheWriteTokens(usage);
+        var reasoningTokens = ReadChatReasoningTokens(usage);
+        var billableInputTokens = cachedTokens > 0 || cacheWriteTokens > 0
+            ? Math.Max(0, inputTokens - cachedTokens - cacheWriteTokens)
+            : (int?)null;
+        var cacheReadRatio = inputTokens > 0 && cachedTokens > 0
+            ? Math.Min(1, cachedTokens / (double)inputTokens)
+            : (double?)null;
         tokenUsage = new AgentRuntimeTokenUsage(
             inputTokens,
             outputTokens,
-            cachedTokens > 0 ? Math.Max(0, inputTokens - cachedTokens) : null,
+            billableInputTokens,
             cachedTokens > 0 ? cachedTokens : null,
             reasoningTokens > 0 ? reasoningTokens : null,
-            inputTokens);
+            inputTokens,
+            CacheCreationTokens: cacheWriteTokens > 0 ? cacheWriteTokens : null,
+            CacheReadRatio: cacheReadRatio);
         return inputTokens > 0 || outputTokens > 0;
+    }
+
+    private static int ReadChatCacheReadTokens(JsonElement usage)
+    {
+        var cachedTokens = ReadFirstPositiveInt(
+            usage,
+            "cached_tokens",
+            "cache_read_tokens",
+            "cache_read_input_tokens",
+            "cached_input_tokens");
+        if (cachedTokens > 0)
+        {
+            return cachedTokens;
+        }
+
+        foreach (var detailsName in new[] { "prompt_tokens_details", "input_tokens_details" })
+        {
+            if (usage.TryGetProperty(detailsName, out var details))
+            {
+                cachedTokens = ReadFirstPositiveInt(
+                    details,
+                    "cached_tokens",
+                    "cache_read_tokens",
+                    "cache_read_input_tokens",
+                    "cached_input_tokens");
+                if (cachedTokens > 0)
+                {
+                    return cachedTokens;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int ReadChatCacheWriteTokens(JsonElement usage)
+    {
+        var cacheWriteTokens = ReadFirstPositiveInt(
+            usage,
+            "cache_write_tokens",
+            "cache_write_input_tokens",
+            "cache_creation_tokens",
+            "cache_creation_input_tokens");
+        if (cacheWriteTokens > 0)
+        {
+            return cacheWriteTokens;
+        }
+
+        foreach (var detailsName in new[] { "prompt_tokens_details", "input_tokens_details" })
+        {
+            if (usage.TryGetProperty(detailsName, out var details))
+            {
+                cacheWriteTokens = ReadFirstPositiveInt(
+                    details,
+                    "cache_write_tokens",
+                    "cache_write_input_tokens",
+                    "cache_creation_tokens",
+                    "cache_creation_input_tokens");
+                if (cacheWriteTokens > 0)
+                {
+                    return cacheWriteTokens;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int ReadChatReasoningTokens(JsonElement usage)
+    {
+        var reasoningTokens = ReadFirstPositiveInt(usage, "reasoning_tokens");
+        if (reasoningTokens > 0)
+        {
+            return reasoningTokens;
+        }
+
+        foreach (var detailsName in new[] { "completion_tokens_details", "output_tokens_details" })
+        {
+            if (usage.TryGetProperty(detailsName, out var details))
+            {
+                reasoningTokens = ReadFirstPositiveInt(details, "reasoning_tokens");
+                if (reasoningTokens > 0)
+                {
+                    return reasoningTokens;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int ReadFirstPositiveInt(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var value = ReadInt(element, propertyName);
+            if (value > 0)
+            {
+                return value;
+            }
+        }
+        return 0;
     }
 
     private static string? ReadString(JsonElement element, string propertyName)
@@ -3205,12 +3601,20 @@ internal static class OpenAIChatRuntime
 
     private static int ReadInt(JsonElement element, string propertyName)
     {
-        if (element.ValueKind == JsonValueKind.Object &&
-            element.TryGetProperty(propertyName, out var property) &&
-            property.ValueKind == JsonValueKind.Number &&
-            property.TryGetInt32(out var value))
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
         {
-            return value;
+            return 0;
+        }
+        if (property.ValueKind == JsonValueKind.Number &&
+            property.TryGetInt64(out var longValue))
+        {
+            return longValue > int.MaxValue ? int.MaxValue : (int)Math.Max(0, longValue);
+        }
+        if (property.ValueKind == JsonValueKind.String &&
+            long.TryParse(property.GetString(), out longValue))
+        {
+            return longValue > int.MaxValue ? int.MaxValue : (int)Math.Max(0, longValue);
         }
         return 0;
     }

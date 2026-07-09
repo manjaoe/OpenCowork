@@ -2742,6 +2742,61 @@ function collectAvailableContinuationToolResults(
   return { toolResultsById, missingToolUses }
 }
 
+/**
+ * Self-heal dangling tool_use blocks after a run terminates (stop, error, worker
+ * crash). A tail assistant message whose tool_use has no persisted tool_result is
+ * poison: the provider input writer strips the unpaired tool_use on the next
+ * request, so the model forgets the call ever happened and silently re-executes
+ * it — most painfully re-running a long sub-agent Task from scratch. Bridge the
+ * real output from the tool-call cache when it exists (the tool actually
+ * finished, only the result message was lost); otherwise persist an explicit
+ * "interrupted" error result so the model knows the call did not complete.
+ */
+function healDanglingTailToolUses(sessionId: string): boolean {
+  const messages = useChatStore.getState().getSessionMessages(sessionId)
+  const tailToolExecution = getTailToolExecutionState(messages)
+  if (!tailToolExecution) return false
+
+  const unresolved = tailToolExecution.toolUseBlocks.filter(
+    (toolUse) => !tailToolExecution.toolResultMap.has(toolUse.id)
+  )
+  if (unresolved.length === 0) return false
+
+  const { toolResultsById } = collectAvailableContinuationToolResults(sessionId, tailToolExecution)
+  const healedResults = unresolved.map((toolUse) => {
+    const saved = toolResultsById.get(toolUse.id)
+    if (saved) {
+      return {
+        type: 'tool_result' as const,
+        toolUseId: toolUse.id,
+        content: saved.content,
+        ...(saved.isError ? { isError: true } : {})
+      }
+    }
+    return {
+      type: 'tool_result' as const,
+      toolUseId: toolUse.id,
+      content: encodeToolError(
+        `Tool execution interrupted: the run stopped before ${toolUse.name} finished. ` +
+          'Do not assume it completed; re-run it only if its work is still needed.'
+      ),
+      isError: true
+    }
+  })
+
+  addRuntimeMessage(sessionId, {
+    id: nanoid(),
+    role: 'user',
+    content: healedResults,
+    createdAt: Date.now()
+  })
+  console.log('[ChatActions] Healed dangling tool_use blocks', {
+    sessionId,
+    toolUseIds: unresolved.map((toolUse) => toolUse.id)
+  })
+  return true
+}
+
 // ── Team lead auto-trigger: teammate messages → new agent turn ──
 
 /** Module-level ref to the latest sendMessage function from the hook */
@@ -3727,6 +3782,16 @@ export function useChatActions(): {
         clearLastTaskInvocation(sessionId)
       }
       await chatStore.loadRecentSessionMessages(sessionId)
+      if (
+        source !== 'continue' &&
+        !hasActiveSessionRun(sessionId) &&
+        useAgentStore.getState().runningSessions[sessionId] === undefined
+      ) {
+        // Heal dangling tool_use left behind by an earlier crash (e.g. the app was
+        // killed mid-run) before the request is built: an unpaired tool_use gets
+        // stripped from provider input and silently replayed by the model.
+        healDanglingTailToolUses(sessionId)
+      }
 
       if (options?.enablePlanMode) {
         useUIStore.getState().enterPlanMode(sessionId)
@@ -5933,6 +5998,15 @@ export function useChatActions(): {
               (s) => s === 'running' || s === 'retrying'
             )
             agentStore.setRunning(hasOtherRunning)
+            // Persist results for any tool_use the stream left unresolved so a later
+            // continue/retry can't silently replay it (e.g. re-running a sub-agent
+            // Task from scratch after a stop or worker crash). Foreground only: for
+            // background sessions the chat store is not authoritative (messages sit
+            // in the background buffer), so the tail state can't be trusted here.
+            if (isSessionForeground(sessionId)) {
+              flushRuntimeForegroundMutations()
+              healDanglingTailToolUses(sessionId)
+            }
             const dispatchedQueuedMessage = dispatchNextQueuedMessage(sessionId)
 
             if (shouldAutoContinueLongRunning && !dispatchedQueuedMessage) {

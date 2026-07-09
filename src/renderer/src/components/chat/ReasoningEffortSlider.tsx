@@ -112,6 +112,14 @@ const REASONING_EFFORT_CSS = `
   opacity: 0;
   animation: reasoningEffortSpark var(--dur) ease-in-out var(--delay) infinite;
 }
+.reasoningEffortMaxScatter {
+  position: absolute;
+  border-radius: 9999px;
+  background: rgba(255, 247, 255, 0.92);
+  box-shadow: 0 0 5px rgba(232, 121, 249, 0.7);
+  opacity: 0;
+  animation: reasoningEffortScatter var(--dur) ease-out var(--delay) infinite;
+}
 @keyframes reasoningEffortSheen {
   0%, 42% { transform: translateX(-85%); }
   78%, 100% { transform: translateX(110%); }
@@ -132,16 +140,24 @@ const REASONING_EFFORT_CSS = `
   0%, 100% { transform: translateY(0) scale(0.55); opacity: 0; }
   42% { transform: translateY(1px) scale(1); opacity: 0.95; }
 }
+@keyframes reasoningEffortScatter {
+  0% { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  16% { opacity: 0.95; }
+  70% { opacity: 0.5; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0.15); opacity: 0; }
+}
 @media (prefers-reduced-motion: reduce) {
   .reasoningEffortFill::after { animation: none; opacity: 0; }
   .reasoningEffortFillMax,
   .reasoningEffortRailMax::before,
   .reasoningEffortMaxChip,
-  .reasoningEffortMaxSpark {
+  .reasoningEffortMaxSpark,
+  .reasoningEffortMaxScatter {
     animation: none;
   }
   .reasoningEffortRailMax::before { opacity: 0.35; transform: none; }
   .reasoningEffortMaxSpark { opacity: 0.7; }
+  .reasoningEffortMaxScatter { opacity: 0; }
 }
 `.trim()
 
@@ -152,6 +168,36 @@ interface MaxSpark {
   dur: number
   delay: number
 }
+
+interface ScatterDot {
+  /** Emission point along the rail, in %. */
+  x: number
+  edge: 'top' | 'bottom'
+  /** Drift distance away from the rail, in px. */
+  tx: number
+  ty: number
+  size: number
+  dur: number
+  delay: number
+}
+
+// Dots disperse outward from the whole rail; denser and farther near the max end.
+const MAX_SCATTER: ScatterDot[] = [
+  { x: 8, edge: 'top', tx: -3, ty: -9, size: 1.6, dur: 2.6, delay: 0.2 },
+  { x: 16, edge: 'bottom', tx: 2, ty: 7, size: 1.4, dur: 2.9, delay: 1.1 },
+  { x: 27, edge: 'top', tx: 4, ty: -11, size: 1.8, dur: 2.4, delay: 0.6 },
+  { x: 38, edge: 'bottom', tx: -2, ty: 8, size: 1.5, dur: 2.7, delay: 1.7 },
+  { x: 47, edge: 'top', tx: 3, ty: -10, size: 1.7, dur: 2.2, delay: 0.05 },
+  { x: 58, edge: 'bottom', tx: 4, ty: 7, size: 1.6, dur: 2.5, delay: 0.9 },
+  { x: 66, edge: 'top', tx: -4, ty: -12, size: 1.9, dur: 2.1, delay: 1.35 },
+  { x: 74, edge: 'top', tx: 5, ty: -9, size: 1.6, dur: 1.9, delay: 0.45 },
+  { x: 81, edge: 'bottom', tx: 5, ty: 8, size: 1.8, dur: 2.2, delay: 1.55 },
+  { x: 87, edge: 'top', tx: 6, ty: -13, size: 2, dur: 1.8, delay: 0.75 },
+  { x: 93, edge: 'top', tx: 8, ty: -10, size: 2.1, dur: 1.7, delay: 0.15 },
+  { x: 97, edge: 'bottom', tx: 9, ty: 6, size: 1.9, dur: 1.9, delay: 1 },
+  { x: 100, edge: 'top', tx: 11, ty: -7, size: 2.2, dur: 1.6, delay: 0.55 },
+  { x: 100, edge: 'bottom', tx: 12, ty: 9, size: 1.7, dur: 1.8, delay: 1.25 }
+]
 
 const MAX_SPARKS: MaxSpark[] = [
   { x: 55, y: 4, size: 1.2, dur: 1.9, delay: 0.15 },
@@ -307,6 +353,31 @@ export function ReasoningEffortSlider(props: ReasoningEffortSliderProps): React.
               </span>
             )}
           </span>
+
+          {/* Scatter layer sits outside the rail so dots can escape its overflow clip. */}
+          {showMaxEasterEgg && (
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-2 z-[5] h-3">
+              {MAX_SCATTER.map((dot, i) => (
+                <span
+                  key={i}
+                  className="reasoningEffortMaxScatter"
+                  style={
+                    {
+                      left: `${dot.x}%`,
+                      top: dot.edge === 'top' ? -1 : undefined,
+                      bottom: dot.edge === 'bottom' ? -1 : undefined,
+                      width: dot.size,
+                      height: dot.size,
+                      '--tx': `${dot.tx}px`,
+                      '--ty': `${dot.ty}px`,
+                      '--dur': `${dot.dur}s`,
+                      '--delay': `${dot.delay}s`
+                    } as React.CSSProperties
+                  }
+                />
+              ))}
+            </div>
+          )}
 
           <div
             ref={railRef}

@@ -10,6 +10,8 @@ internal static partial class AgentRuntimeSubAgentExecutor
     private const string TaskToolName = "Task";
     private const string SubmitReportToolName = "SubmitReport";
     private const int DefaultMaxTurns = 12;
+    private const int MaxRecentTaskInvocationKeys = 512;
+    private const long RecentTaskInvocationTtlMs = 6 * 60 * 60 * 1_000;
     private const string AgentsDirectoryName = ".open-cowork/agents";
     private const string CustomSubAgentType = "custom";
 
@@ -35,6 +37,9 @@ internal static partial class AgentRuntimeSubAgentExecutor
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+    private static readonly object TaskInvocationGate = new();
+    private static readonly Dictionary<string, SubAgentTaskInvocation> RecentTaskInvocations =
+        new(StringComparer.Ordinal);
 
     public static bool IsTaskTool(string toolName)
     {
@@ -129,141 +134,161 @@ internal static partial class AgentRuntimeSubAgentExecutor
         }
 
         var dedupKey = BuildTaskDedupKey(call.Input);
-        if (!string.IsNullOrWhiteSpace(parentState.SessionId) &&
-            parentState.TryGetDuplicateTaskInvocation(
-                dedupKey,
-                call.Id,
-                out var duplicateInvocation) &&
-            duplicateInvocation is not null)
-        {
-            return DuplicateTaskResult(subAgentType, duplicateInvocation.Output);
-        }
-
-        var promptMessage = BuildPromptMessage(call.Input, definition.InitialPrompt);
-        var parentTools = ReadToolDefinitions(parameters);
-        var innerTools = ResolveTools(
-            definition,
-            parentTools,
-            JsonHelpers.GetBool(parameters, "planMode", false));
-        innerTools.Add(BuildSubmitReportToolDefinition());
-
-        var provider = BuildProvider(parameters, definition);
-        var childParameters = BuildChildParameters(
-            parameters,
-            provider,
-            promptMessage,
-            innerTools,
-            definition,
-            call.Id);
-        var childState = new AgentRuntimeTools.AgentRuntimeRunState(
-            $"subagent-{call.Id}-{Guid.NewGuid():N}",
-            parentState.SessionId)
-        {
-            SuppressTransportEvents = true
-        };
-        childState.ReplaceParameters(childParameters);
-
-        var collector = new SubAgentRunCollector(
-            definition.Name,
+        var taskInvocation = BeginSubAgentTaskInvocation(
+            ResolveTaskInvocationScope(parentState),
+            dedupKey,
             call.Id,
-            call.Input.Clone(),
-            promptMessage,
-            provider,
-            parentState,
-            context);
-        childState.EventObserver = collector.ObserveAsync;
-        using var parentCancellationRegistration = parentState.CancellationToken.Register(
-            static state => ((AgentRuntimeTools.AgentRuntimeRunState)state!).Cancel("parent"),
-            childState);
-
-        var startHook = await AgentRuntimeHooks.RunSubagentAsync(
-            parameters,
-            parentState,
-            context,
-            "SubagentStart",
-            childState.RunId,
-            definition.Name,
-            call.Id);
-        if (startHook.Blocked)
+            out var existingInvocation,
+            out var existingMatchesToolUseId);
+        if (taskInvocation is null && existingInvocation is not null)
         {
-            childState.Dispose();
-            return ErrorResult(startHook.Reason ?? "SubagentStart hook blocked sub-agent run");
+            return await ReuseSubAgentTaskInvocationAsync(
+                subAgentType,
+                existingInvocation,
+                existingMatchesToolUseId,
+                cancellationToken);
         }
-        if (startHook.HasContext)
+        if (taskInvocation is null)
         {
-            childParameters = AppendHookRequestContexts(childParameters, startHook);
-            childState.ReplaceParameters(childParameters);
+            return ErrorResult("Task execution could not be registered for replay protection.");
         }
-
-        await AgentRuntimeTools.EmitAsync(
-            parentState,
-            context,
-            new AgentRuntimeStreamEvent(
-                "sub_agent_start",
-                SubAgentName: definition.Name,
-                ToolUseId: call.Id,
-                Input: call.Input.Clone(),
-                PromptMessage: promptMessage));
 
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            parentState.CancellationToken.ThrowIfCancellationRequested();
-            await OpenAIChatRuntime.ExecuteLoopAsync(childParameters, childState, context);
-        }
-        catch (OperationCanceledException)
-        {
-            childState.RequestStop("aborted");
+            var promptMessage = BuildPromptMessage(call.Input, definition.InitialPrompt);
+            var parentTools = ReadToolDefinitions(parameters);
+            var innerTools = ResolveTools(
+                definition,
+                parentTools,
+                JsonHelpers.GetBool(parameters, "planMode", false));
+            innerTools.Add(BuildSubmitReportToolDefinition());
+
+            var provider = BuildProvider(parameters, definition);
+            var childParameters = BuildChildParameters(
+                parameters,
+                provider,
+                promptMessage,
+                innerTools,
+                definition,
+                call.Id);
+            var childState = new AgentRuntimeTools.AgentRuntimeRunState(
+                $"subagent-{call.Id}-{Guid.NewGuid():N}",
+                parentState.SessionId)
+            {
+                SuppressTransportEvents = true
+            };
+            childState.ReplaceParameters(childParameters);
+
+            var collector = new SubAgentRunCollector(
+                definition.Name,
+                call.Id,
+                call.Input.Clone(),
+                promptMessage,
+                provider,
+                parentState,
+                context);
+            childState.EventObserver = collector.ObserveAsync;
+            using var parentCancellationRegistration = parentState.CancellationToken.Register(
+                static state => ((AgentRuntimeTools.AgentRuntimeRunState)state!).Cancel("parent"),
+                childState);
+
+            var startHook = await AgentRuntimeHooks.RunSubagentAsync(
+                parameters,
+                parentState,
+                context,
+                "SubagentStart",
+                childState.RunId,
+                definition.Name,
+                call.Id);
+            if (startHook.Blocked)
+            {
+                childState.Dispose();
+                var blockedResult = ErrorResult(startHook.Reason ?? "SubagentStart hook blocked sub-agent run");
+                CompleteSubAgentTaskInvocation(taskInvocation, blockedResult);
+                return blockedResult;
+            }
+            if (startHook.HasContext)
+            {
+                childParameters = AppendHookRequestContexts(childParameters, startHook);
+                childState.ReplaceParameters(childParameters);
+            }
+
+            await AgentRuntimeTools.EmitAsync(
+                parentState,
+                context,
+                new AgentRuntimeStreamEvent(
+                    "sub_agent_start",
+                    SubAgentName: definition.Name,
+                    ToolUseId: call.Id,
+                    Input: call.Input.Clone(),
+                    PromptMessage: promptMessage));
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                parentState.CancellationToken.ThrowIfCancellationRequested();
+                await OpenAIChatRuntime.ExecuteLoopAsync(childParameters, childState, context);
+            }
+            catch (OperationCanceledException)
+            {
+                childState.RequestStop("aborted");
+            }
+            catch (Exception ex)
+            {
+                collector.SetError(ex.Message);
+                WorkerLog.Warn(
+                    $"sub-agent run failed parentRunId={parentState.RunId} toolUseId={call.Id} " +
+                    $"agent={definition.Name} error={ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                childState.Dispose();
+            }
+
+            var result = collector.BuildResult(childState.SubmittedReport);
+            var stopHook = await AgentRuntimeHooks.RunSubagentAsync(
+                parameters,
+                parentState,
+                context,
+                "SubagentStop",
+                childState.RunId,
+                definition.Name,
+                call.Id);
+            if (stopHook.Blocked)
+            {
+                var reason = stopHook.Reason ?? "SubagentStop hook blocked sub-agent result";
+                result = result with { Success = false, Output = reason, Error = reason };
+            }
+            await AgentRuntimeTools.EmitAsync(
+                parentState,
+                context,
+                new AgentRuntimeStreamEvent(
+                    "sub_agent_report_update",
+                    SubAgentName: definition.Name,
+                    ToolUseId: call.Id,
+                    Report: result.Output,
+                    Status: result.ReportSubmitted ? "submitted" : "missing"),
+                new AgentRuntimeStreamEvent(
+                    "sub_agent_end",
+                    SubAgentName: definition.Name,
+                    ToolUseId: call.Id,
+                    Result: result.ToJson()));
+
+            var toolResult = result.Success
+                ? new RendererToolResult(StringElement(result.Output), false, null)
+                : new RendererToolResult(
+                    StringElement(EncodeError(result.Error ?? "SubAgent failed")),
+                    true,
+                    result.Error);
+            CompleteSubAgentTaskInvocation(taskInvocation, toolResult);
+            return toolResult;
         }
         catch (Exception ex)
         {
-            collector.SetError(ex.Message);
-            WorkerLog.Warn(
-                $"sub-agent run failed parentRunId={parentState.RunId} toolUseId={call.Id} " +
-                $"agent={definition.Name} error={ex.GetType().Name}: {ex.Message}");
+            var errorResult = ErrorResult(ex.Message);
+            CompleteSubAgentTaskInvocation(taskInvocation, errorResult);
+            return errorResult;
         }
-        finally
-        {
-            childState.Dispose();
-        }
-
-        var result = collector.BuildResult(childState.SubmittedReport);
-        var stopHook = await AgentRuntimeHooks.RunSubagentAsync(
-            parameters,
-            parentState,
-            context,
-            "SubagentStop",
-            childState.RunId,
-            definition.Name,
-            call.Id);
-        if (stopHook.Blocked)
-        {
-            var reason = stopHook.Reason ?? "SubagentStop hook blocked sub-agent result";
-            result = result with { Success = false, Output = reason, Error = reason };
-        }
-        await AgentRuntimeTools.EmitAsync(
-            parentState,
-            context,
-            new AgentRuntimeStreamEvent(
-                "sub_agent_report_update",
-                SubAgentName: definition.Name,
-                ToolUseId: call.Id,
-                Report: result.Output,
-                Status: result.ReportSubmitted ? "submitted" : "missing"),
-            new AgentRuntimeStreamEvent(
-                "sub_agent_end",
-                SubAgentName: definition.Name,
-                ToolUseId: call.Id,
-                Result: result.ToJson()));
-
-        if (result.Success && !string.IsNullOrWhiteSpace(parentState.SessionId))
-        {
-            parentState.RememberTaskInvocation(dedupKey, result.Output, call.Id);
-        }
-
-        return result.Success
-            ? new RendererToolResult(StringElement(result.Output), false, null)
-            : new RendererToolResult(StringElement(EncodeError(result.Error ?? "SubAgent failed")), true, result.Error);
     }
 
     private static SubAgentDefinitionNative? ResolveDefinition(
@@ -461,6 +486,219 @@ internal static partial class AgentRuntimeSubAgentExecutor
             return null;
         }
         return WhitespaceRegex().Replace(value.Trim(), " ");
+    }
+
+    private static string ResolveTaskInvocationScope(AgentRuntimeTools.AgentRuntimeRunState state)
+    {
+        // Scope replay protection to the session rather than the run: a continued or
+        // retried parent run gets a fresh runId, and run-scoped keys let the model
+        // silently re-execute the same Task (same sub-agent + prompt) from scratch.
+        return string.IsNullOrWhiteSpace(state.SessionId) ? state.RunId : state.SessionId;
+    }
+
+    public static void OnMainLoopStart(
+        JsonElement parameters,
+        IReadOnlyList<JsonElement> wireConversation,
+        AgentRuntimeTools.AgentRuntimeRunState state)
+    {
+        // A fresh user turn resets completed Task replay-protection entries for this
+        // session. The guard exists to stop automatic continues/retries from silently
+        // re-running the same sub-agent from scratch, not to block the user from
+        // explicitly requesting the same work again. In-flight invocations are kept
+        // so concurrent duplicates still coalesce.
+        if (IsSubAgentRun(parameters) || !EndsWithFreshUserText(wireConversation))
+        {
+            return;
+        }
+
+        var scope = ResolveTaskInvocationScope(state);
+        lock (TaskInvocationGate)
+        {
+            var completedInvocations = RecentTaskInvocations.Values
+                .Distinct()
+                .Where(item => item.Completion.Task.IsCompleted &&
+                    string.Equals(item.Scope, scope, StringComparison.Ordinal))
+                .ToArray();
+            foreach (var invocation in completedInvocations)
+            {
+                RemoveTaskInvocationAliasesLocked(invocation);
+            }
+        }
+    }
+
+    private static bool EndsWithFreshUserText(IReadOnlyList<JsonElement> wireConversation)
+    {
+        if (wireConversation.Count == 0)
+        {
+            return false;
+        }
+
+        var last = wireConversation[^1];
+        if (JsonHelpers.GetString(last, "role") != "user" ||
+            !last.TryGetProperty("content", out var content))
+        {
+            return false;
+        }
+
+        if (content.ValueKind == JsonValueKind.String)
+        {
+            return !string.IsNullOrWhiteSpace(content.GetString());
+        }
+        if (content.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var block in content.EnumerateArray())
+        {
+            if (JsonHelpers.GetString(block, "type") == "text" &&
+                !string.IsNullOrWhiteSpace(JsonHelpers.GetString(block, "text")))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static SubAgentTaskInvocation? BeginSubAgentTaskInvocation(
+        string scope,
+        string dedupKey,
+        string toolUseId,
+        out SubAgentTaskInvocation? existingInvocation,
+        out bool existingMatchesToolUseId)
+    {
+        var now = NowMs();
+        var byToolUseIdKey = BuildTaskInvocationScopedKey(scope, "tool", toolUseId);
+        var byDedupKey = BuildTaskInvocationScopedKey(scope, "dedup", dedupKey);
+
+        lock (TaskInvocationGate)
+        {
+            CleanupTaskInvocationCacheLocked(now);
+
+            if (RecentTaskInvocations.TryGetValue(byToolUseIdKey, out existingInvocation))
+            {
+                existingMatchesToolUseId = true;
+                return null;
+            }
+            if (RecentTaskInvocations.TryGetValue(byDedupKey, out existingInvocation))
+            {
+                existingMatchesToolUseId = false;
+                return null;
+            }
+
+            var invocation = new SubAgentTaskInvocation(
+                scope,
+                dedupKey,
+                toolUseId,
+                byToolUseIdKey,
+                byDedupKey,
+                now);
+            RecentTaskInvocations[byToolUseIdKey] = invocation;
+            RecentTaskInvocations[byDedupKey] = invocation;
+            existingInvocation = null;
+            existingMatchesToolUseId = false;
+            return invocation;
+        }
+    }
+
+    private static async Task<RendererToolResult> ReuseSubAgentTaskInvocationAsync(
+        string subAgentType,
+        SubAgentTaskInvocation invocation,
+        bool sameToolUseId,
+        CancellationToken cancellationToken)
+    {
+        WorkerLog.Warn(
+            $"duplicate sub-agent Task blocked scope={invocation.Scope} " +
+            $"toolUseId={invocation.ToolUseId} sameToolUseId={sameToolUseId} agent={subAgentType}");
+
+        var result = invocation.Completion.Task.IsCompleted
+            ? await invocation.Completion.Task
+            : await invocation.Completion.Task.WaitAsync(cancellationToken);
+
+        if (sameToolUseId)
+        {
+            return RestoreTaskInvocationResult(result);
+        }
+
+        return result.IsError
+            ? DuplicateTaskFailureResult(subAgentType, result)
+            : DuplicateTaskResult(subAgentType, result.Output);
+    }
+
+    private static void CompleteSubAgentTaskInvocation(
+        SubAgentTaskInvocation invocation,
+        RendererToolResult result)
+    {
+        var output = ReadRendererToolResultText(result.Content);
+        if (string.IsNullOrWhiteSpace(output) && result.IsError)
+        {
+            output = EncodeError(result.Error ?? "SubAgent failed");
+        }
+
+        invocation.Completion.TrySetResult(new SubAgentTaskInvocationResult(
+            output,
+            result.IsError,
+            result.Error));
+    }
+
+    private static RendererToolResult RestoreTaskInvocationResult(SubAgentTaskInvocationResult result)
+    {
+        var output = string.IsNullOrWhiteSpace(result.Output) && result.IsError
+            ? EncodeError(result.Error ?? "SubAgent failed")
+            : result.Output;
+        return new RendererToolResult(StringElement(output), result.IsError, result.Error);
+    }
+
+    private static string ReadRendererToolResultText(JsonElement content)
+    {
+        return content.ValueKind == JsonValueKind.String
+            ? content.GetString() ?? string.Empty
+            : content.GetRawText();
+    }
+
+    private static string BuildTaskInvocationScopedKey(
+        string scope,
+        string discriminator,
+        string value)
+    {
+        var normalizedScope = string.IsNullOrWhiteSpace(scope) ? "unknown" : scope.Trim();
+        return $"{normalizedScope}\u001f{discriminator}\u001f{ShortHash(value, 24)}";
+    }
+
+    private static void CleanupTaskInvocationCacheLocked(long now)
+    {
+        var expiredInvocations = RecentTaskInvocations.Values
+            .Distinct()
+            .Where(item => item.Completion.Task.IsCompleted &&
+                now - item.CreatedAt > RecentTaskInvocationTtlMs)
+            .ToArray();
+        foreach (var invocation in expiredInvocations)
+        {
+            RemoveTaskInvocationAliasesLocked(invocation);
+        }
+
+        if (RecentTaskInvocations.Count <= MaxRecentTaskInvocationKeys)
+        {
+            return;
+        }
+
+        var removeCount = (RecentTaskInvocations.Count - MaxRecentTaskInvocationKeys + 1) / 2;
+        var oldestCompletedInvocations = RecentTaskInvocations.Values
+            .Distinct()
+            .Where(item => item.Completion.Task.IsCompleted)
+            .OrderBy(item => item.CreatedAt)
+            .Take(removeCount)
+            .ToArray();
+        foreach (var invocation in oldestCompletedInvocations)
+        {
+            RemoveTaskInvocationAliasesLocked(invocation);
+        }
+    }
+
+    private static void RemoveTaskInvocationAliasesLocked(SubAgentTaskInvocation invocation)
+    {
+        RecentTaskInvocations.Remove(invocation.ToolUseIdKey);
+        RecentTaskInvocations.Remove(invocation.DedupKeyAlias);
     }
 
     private static JsonElement BuildProvider(
@@ -866,6 +1104,28 @@ internal static partial class AgentRuntimeSubAgentExecutor
         return new RendererToolResult(StringElement(content), false, null);
     }
 
+    private static RendererToolResult DuplicateTaskFailureResult(
+        string subAgentType,
+        SubAgentTaskInvocationResult previousResult)
+    {
+        var error = previousResult.Error ?? "SubAgent failed";
+        var content = CreateObject(writer =>
+        {
+            writer.WriteString(
+                "error",
+                $"Duplicate Task call blocked: the previous Task invocation to \"{subAgentType}\" " +
+                "used an identical prompt and already failed. Do NOT re-launch the same " +
+                "sub-agent with the same prompt in this turn. Inspect the previous error " +
+                "below and continue with a different approach.");
+            writer.WriteString("previous_error", error);
+            if (!string.IsNullOrWhiteSpace(previousResult.Output))
+            {
+                writer.WriteString("previous_output", previousResult.Output);
+            }
+        }).GetRawText();
+        return new RendererToolResult(StringElement(content), true, error);
+    }
+
     private static string EncodeError(string message)
     {
         return CreateObject(writer => writer.WriteString("error", message)).GetRawText();
@@ -910,6 +1170,46 @@ internal static partial class AgentRuntimeSubAgentExecutor
         string? InitialPrompt,
         string? Model,
         double? Temperature);
+
+    private sealed class SubAgentTaskInvocation
+    {
+        public SubAgentTaskInvocation(
+            string scope,
+            string dedupKey,
+            string toolUseId,
+            string toolUseIdKey,
+            string dedupKeyAlias,
+            long createdAt)
+        {
+            Scope = scope;
+            DedupKey = dedupKey;
+            ToolUseId = toolUseId;
+            ToolUseIdKey = toolUseIdKey;
+            DedupKeyAlias = dedupKeyAlias;
+            CreatedAt = createdAt;
+            Completion = new TaskCompletionSource<SubAgentTaskInvocationResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        public string Scope { get; }
+
+        public string DedupKey { get; }
+
+        public string ToolUseId { get; }
+
+        public string ToolUseIdKey { get; }
+
+        public string DedupKeyAlias { get; }
+
+        public long CreatedAt { get; }
+
+        public TaskCompletionSource<SubAgentTaskInvocationResult> Completion { get; }
+    }
+
+    private sealed record SubAgentTaskInvocationResult(
+        string Output,
+        bool IsError,
+        string? Error);
 
     private sealed class SubAgentRunCollector
     {

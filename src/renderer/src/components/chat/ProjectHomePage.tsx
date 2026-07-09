@@ -103,6 +103,7 @@ export function ProjectHomePage(): React.JSX.Element {
               onSelectFolder={() => setFolderDialogOpen(true)}
               workingFolder={workingFolder}
               hideWorkingFolderIndicator
+              hideWorkingFolderPicker
               isStreaming={false}
             />
 

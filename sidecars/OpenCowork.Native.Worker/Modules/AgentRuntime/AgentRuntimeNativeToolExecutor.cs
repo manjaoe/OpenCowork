@@ -538,13 +538,13 @@ internal static class AgentRuntimeNativeToolExecutor
 
             var content = call.Name switch
             {
-                "Read" => await ReadAsync(call.Input, parameters, cancellationToken),
-                "Write" => await WriteAsync(call, parameters, cancellationToken),
-                "Edit" => await EditAsync(call, parameters, cancellationToken),
-                "NotebookEdit" => await NotebookEditAsync(call, parameters, cancellationToken),
-                "LS" => ExecuteLs(call.Input, parameters),
-                "Glob" => ExecuteGlob(call.Input, parameters),
-                "Grep" => await GrepAsync(call.Input, parameters, cancellationToken),
+                "Read" => await ReadAsync(call.Input, parameters, context, cancellationToken),
+                "Write" => await WriteAsync(call, parameters, context, cancellationToken),
+                "Edit" => await EditAsync(call, parameters, context, cancellationToken),
+                "NotebookEdit" => await NotebookEditAsync(call, parameters, context, cancellationToken),
+                "LS" => await ExecuteLsAsync(call.Input, parameters, context, cancellationToken),
+                "Glob" => await ExecuteGlobAsync(call.Input, parameters, context, cancellationToken),
+                "Grep" => await GrepAsync(call.Input, parameters, context, cancellationToken),
                 "Bash" or "Shell" => await ExecuteShellAsync(
                     call,
                     parameters,
@@ -576,6 +576,7 @@ internal static class AgentRuntimeNativeToolExecutor
     private static async Task<string> ReadAsync(
         JsonElement input,
         JsonElement parameters,
+        WorkerRequestContext context,
         CancellationToken cancellationToken)
     {
         var path = ResolveInputPath(input, parameters);
@@ -583,33 +584,47 @@ internal static class AgentRuntimeNativeToolExecutor
         {
             throw new InvalidOperationException("Read requires a non-empty file_path");
         }
-
-        var content = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
-        RecordRead(parameters, path);
-        var offset = Math.Max(1, JsonHelpers.GetInt(input, "offset", 1));
-        var limit = Math.Max(1, Math.Min(JsonHelpers.GetInt(input, "limit", ReadDefaultLimit), ReadDefaultLimit));
-        var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        var start = Math.Min(offset - 1, lines.Length);
-        var end = Math.Min(start + limit, lines.Length);
-        var width = Math.Max(6, end.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
-        var builder = new StringBuilder();
-        for (var index = start; index < end; index++)
+        if (Directory.Exists(path))
         {
-            if (builder.Length > 0)
-            {
-                builder.Append('\n');
-            }
-            builder.Append((index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(width));
-            builder.Append('\t');
-            builder.Append(lines[index]);
+            throw new InvalidOperationException($"Read expected a file but found a directory. Use LS for: {path}");
         }
 
-        return builder.ToString();
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            path,
+            "read",
+            parameters,
+            context,
+            cancellationToken,
+            async () =>
+            {
+                var content = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
+                RecordRead(parameters, path);
+                var offset = Math.Max(1, JsonHelpers.GetInt(input, "offset", 1));
+                var limit = Math.Max(1, Math.Min(JsonHelpers.GetInt(input, "limit", ReadDefaultLimit), ReadDefaultLimit));
+                var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+                var start = Math.Min(offset - 1, lines.Length);
+                var end = Math.Min(start + limit, lines.Length);
+                var width = Math.Max(6, end.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
+                var builder = new StringBuilder();
+                for (var index = start; index < end; index++)
+                {
+                    if (builder.Length > 0)
+                    {
+                        builder.Append('\n');
+                    }
+                    builder.Append((index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(width));
+                    builder.Append('\t');
+                    builder.Append(lines[index]);
+                }
+
+                return builder.ToString();
+            });
     }
 
     private static async Task<string> WriteAsync(
         NativeToolCallView call,
         JsonElement parameters,
+        WorkerRequestContext context,
         CancellationToken cancellationToken)
     {
         var input = call.Input;
@@ -630,28 +645,38 @@ internal static class AgentRuntimeNativeToolExecutor
             throw new InvalidOperationException(guardError);
         }
 
-        var before = await CaptureFullTextSnapshotAsync(path, cancellationToken);
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            path,
+            "write",
+            parameters,
+            context,
+            cancellationToken,
+            async () =>
+            {
+                var before = await CaptureFullTextSnapshotAsync(path, cancellationToken);
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
 
-        await File.WriteAllTextAsync(path, content, Encoding.UTF8, cancellationToken);
-        var tracked = RecordTextWriteChange(parameters, call, path, before, BuildLightTextSnapshot(content));
-        RecordRead(parameters, path);
-        return EncodeJsonObject(writer =>
-        {
-            writer.WriteBoolean("success", true);
-            writer.WriteString("path", path);
-            writer.WriteString("op", before.Exists ? "modify" : "create");
-            writer.WriteBoolean("tracked", tracked);
-        });
+                await File.WriteAllTextAsync(path, content, Encoding.UTF8, cancellationToken);
+                var tracked = RecordTextWriteChange(parameters, call, path, before, BuildLightTextSnapshot(content));
+                RecordRead(parameters, path);
+                return EncodeJsonObject(writer =>
+                {
+                    writer.WriteBoolean("success", true);
+                    writer.WriteString("path", path);
+                    writer.WriteString("op", before.Exists ? "modify" : "create");
+                    writer.WriteBoolean("tracked", tracked);
+                });
+            });
     }
 
     private static async Task<string> EditAsync(
         NativeToolCallView call,
         JsonElement parameters,
+        WorkerRequestContext context,
         CancellationToken cancellationToken)
     {
         var input = call.Input;
@@ -678,47 +703,57 @@ internal static class AgentRuntimeNativeToolExecutor
             return EncodeError(guardError);
         }
 
-        var content = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
-        var before = BuildFullTextSnapshot(content);
-        var matchedVariant = FindOldStringVariant(oldString, content);
-        if (matchedVariant is null)
-        {
-            return EncodeError($"String to replace not found in file.\nString: {oldString}");
-        }
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            path,
+            "edit",
+            parameters,
+            context,
+            cancellationToken,
+            async () =>
+            {
+                var content = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
+                var before = BuildFullTextSnapshot(content);
+                var matchedVariant = FindOldStringVariant(oldString, content);
+                if (matchedVariant is null)
+                {
+                    return EncodeError($"String to replace not found in file.\nString: {oldString}");
+                }
 
-        var occurrences = CountOccurrences(content, matchedVariant.Value.Text);
-        if (occurrences == 0)
-        {
-            return EncodeError($"String to replace not found in file.\nString: {oldString}");
-        }
-        if (!replaceAll && occurrences > 1)
-        {
-            return EncodeError(
-                $"Found {occurrences} matches of the string to replace, but replace_all is false. " +
-                $"To replace all occurrences, set replace_all to true. To replace only one occurrence, provide more surrounding context.\nString: {oldString}");
-        }
+                var occurrences = CountOccurrences(content, matchedVariant.Value.Text);
+                if (occurrences == 0)
+                {
+                    return EncodeError($"String to replace not found in file.\nString: {oldString}");
+                }
+                if (!replaceAll && occurrences > 1)
+                {
+                    return EncodeError(
+                        $"Found {occurrences} matches of the string to replace, but replace_all is false. " +
+                        $"To replace all occurrences, set replace_all to true. To replace only one occurrence, provide more surrounding context.\nString: {oldString}");
+                }
 
-        var replacementText = ApplyEolStyle(
-            newString,
-            GetReplacementEolStyle(matchedVariant.Value, content));
-        var updated = replaceAll
-            ? content.Replace(matchedVariant.Value.Text, replacementText, StringComparison.Ordinal)
-            : ReplaceFirst(content, matchedVariant.Value.Text, replacementText);
-        await File.WriteAllTextAsync(path, updated, Encoding.UTF8, cancellationToken);
-        var tracked = RecordTextWriteChange(parameters, call, path, before, BuildLightTextSnapshot(updated));
-        RecordRead(parameters, path);
-        return EncodeJsonObject(writer =>
-        {
-            writer.WriteBoolean("success", true);
-            writer.WriteString("path", path);
-            writer.WriteBoolean("replaceAll", replaceAll);
-            writer.WriteBoolean("tracked", tracked);
-        });
+                var replacementText = ApplyEolStyle(
+                    newString,
+                    GetReplacementEolStyle(matchedVariant.Value, content));
+                var updated = replaceAll
+                    ? content.Replace(matchedVariant.Value.Text, replacementText, StringComparison.Ordinal)
+                    : ReplaceFirst(content, matchedVariant.Value.Text, replacementText);
+                await File.WriteAllTextAsync(path, updated, Encoding.UTF8, cancellationToken);
+                var tracked = RecordTextWriteChange(parameters, call, path, before, BuildLightTextSnapshot(updated));
+                RecordRead(parameters, path);
+                return EncodeJsonObject(writer =>
+                {
+                    writer.WriteBoolean("success", true);
+                    writer.WriteString("path", path);
+                    writer.WriteBoolean("replaceAll", replaceAll);
+                    writer.WriteBoolean("tracked", tracked);
+                });
+            });
     }
 
     private static async Task<string> NotebookEditAsync(
         NativeToolCallView call,
         JsonElement parameters,
+        WorkerRequestContext context,
         CancellationToken cancellationToken)
     {
         var input = call.Input;
@@ -734,71 +769,84 @@ internal static class AgentRuntimeNativeToolExecutor
             return EncodeError(guardError);
         }
 
-        var content = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
-        var before = BuildFullTextSnapshot(content);
-        JsonNode? notebookNode;
-        try
-        {
-            notebookNode = JsonNode.Parse(content);
-        }
-        catch (JsonException ex)
-        {
-            return EncodeError($"Invalid notebook JSON: {ex.Message}");
-        }
-
-        if (notebookNode is not JsonObject notebook ||
-            notebook["cells"] is not JsonArray cells)
-        {
-            return EncodeError("Notebook does not contain a cells array");
-        }
-
-        var mode = JsonHelpers.GetString(input, "mode") switch
-        {
-            "insert" => "insert",
-            "delete" => "delete",
-            _ => "replace"
-        };
-        var cellIndex = ResolveNotebookCellIndex(input, cells, mode);
-        if (mode != "insert" && (cellIndex < 0 || cellIndex >= cells.Count))
-        {
-            return EncodeError("Notebook cell not found");
-        }
-        if (mode == "insert" && (cellIndex < -1 || cellIndex >= cells.Count))
-        {
-            return EncodeError("Insert cell_index is out of range");
-        }
-
-        if (mode == "delete")
-        {
-            cells.RemoveAt(cellIndex);
-        }
-        else
-        {
-            var nextCell = BuildNotebookCell(input);
-            if (mode == "insert")
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            path,
+            "edit",
+            parameters,
+            context,
+            cancellationToken,
+            async () =>
             {
-                cells.Insert(cellIndex + 1, nextCell);
-            }
-            else
-            {
-                cells[cellIndex] = MergeNotebookCell(cells[cellIndex] as JsonObject, nextCell);
-            }
-        }
+                var content = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken);
+                var before = BuildFullTextSnapshot(content);
+                JsonNode? notebookNode;
+                try
+                {
+                    notebookNode = JsonNode.Parse(content);
+                }
+                catch (JsonException ex)
+                {
+                    return EncodeError($"Invalid notebook JSON: {ex.Message}");
+                }
 
-        var updated = notebook.ToJsonString(NotebookJsonOptions) + "\n";
-        await File.WriteAllTextAsync(path, updated, Encoding.UTF8, cancellationToken);
-        var tracked = RecordTextWriteChange(parameters, call, path, before, BuildLightTextSnapshot(updated));
-        RecordRead(parameters, path);
-        return EncodeJsonObject(writer =>
-        {
-            writer.WriteBoolean("success", true);
-            writer.WriteString("path", path);
-            writer.WriteString("mode", mode);
-            writer.WriteBoolean("tracked", tracked);
-        });
+                if (notebookNode is not JsonObject notebook ||
+                    notebook["cells"] is not JsonArray cells)
+                {
+                    return EncodeError("Notebook does not contain a cells array");
+                }
+
+                var mode = JsonHelpers.GetString(input, "mode") switch
+                {
+                    "insert" => "insert",
+                    "delete" => "delete",
+                    _ => "replace"
+                };
+                var cellIndex = ResolveNotebookCellIndex(input, cells, mode);
+                if (mode != "insert" && (cellIndex < 0 || cellIndex >= cells.Count))
+                {
+                    return EncodeError("Notebook cell not found");
+                }
+                if (mode == "insert" && (cellIndex < -1 || cellIndex >= cells.Count))
+                {
+                    return EncodeError("Insert cell_index is out of range");
+                }
+
+                if (mode == "delete")
+                {
+                    cells.RemoveAt(cellIndex);
+                }
+                else
+                {
+                    var nextCell = BuildNotebookCell(input);
+                    if (mode == "insert")
+                    {
+                        cells.Insert(cellIndex + 1, nextCell);
+                    }
+                    else
+                    {
+                        cells[cellIndex] = MergeNotebookCell(cells[cellIndex] as JsonObject, nextCell);
+                    }
+                }
+
+                var updated = notebook.ToJsonString(NotebookJsonOptions) + "\n";
+                await File.WriteAllTextAsync(path, updated, Encoding.UTF8, cancellationToken);
+                var tracked = RecordTextWriteChange(parameters, call, path, before, BuildLightTextSnapshot(updated));
+                RecordRead(parameters, path);
+                return EncodeJsonObject(writer =>
+                {
+                    writer.WriteBoolean("success", true);
+                    writer.WriteString("path", path);
+                    writer.WriteString("mode", mode);
+                    writer.WriteBoolean("tracked", tracked);
+                });
+            });
     }
 
-    private static string ExecuteLs(JsonElement input, JsonElement parameters)
+    private static async Task<string> ExecuteLsAsync(
+        JsonElement input,
+        JsonElement parameters,
+        WorkerRequestContext context,
+        CancellationToken cancellationToken)
     {
         var rawPath = JsonHelpers.GetString(input, "path")?.Trim() ?? string.Empty;
         var workingFolder = JsonHelpers.GetString(parameters, "workingFolder")?.Trim();
@@ -813,54 +861,80 @@ internal static class AgentRuntimeNativeToolExecutor
             return EncodeError($"Directory not found: {root}");
         }
 
-        var hidden = JsonHelpers.GetBool(input, "hidden", true);
-        var respectGitignore = JsonHelpers.GetBool(input, "respectGitignore", true);
-        var matcher = IgnoreMatcher.Create(root, JsonHelpers.GetStringArray(input, "ignore"), respectGitignore);
-        var entries = new List<LsEntry>();
-        var hasMore = false;
-        foreach (var entry in Directory.EnumerateFileSystemEntries(root))
-        {
-            FileAttributes attributes;
-            try
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            root,
+            "list",
+            parameters,
+            context,
+            cancellationToken,
+            () =>
             {
-                attributes = File.GetAttributes(entry);
-            }
-            catch
-            {
-                continue;
-            }
+                var hidden = JsonHelpers.GetBool(input, "hidden", true);
+                var respectGitignore = JsonHelpers.GetBool(input, "respectGitignore", true);
+                var matcher = IgnoreMatcher.Create(root, JsonHelpers.GetStringArray(input, "ignore"), respectGitignore);
+                var entries = new List<LsEntry>();
+                var hasMore = false;
+                foreach (var entry in Directory.EnumerateFileSystemEntries(root))
+                {
+                    FileAttributes attributes;
+                    try
+                    {
+                        attributes = File.GetAttributes(entry);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
 
-            var isDirectory = attributes.HasFlag(FileAttributes.Directory);
-            if ((!hidden && Path.GetFileName(entry).StartsWith('.')) ||
-                matcher.IsIgnored(entry, isDirectory))
-            {
-                continue;
-            }
+                    var isDirectory = attributes.HasFlag(FileAttributes.Directory);
+                    if ((!hidden && Path.GetFileName(entry).StartsWith('.')) ||
+                        matcher.IsIgnored(entry, isDirectory))
+                    {
+                        continue;
+                    }
 
-            if (entries.Count >= LsBackendFetchLimit)
-            {
-                hasMore = true;
-                break;
-            }
-            entries.Add(new LsEntry(Path.GetFileName(entry), isDirectory ? "directory" : "file", entry));
-        }
+                    if (entries.Count >= LsBackendFetchLimit)
+                    {
+                        hasMore = true;
+                        break;
+                    }
+                    entries.Add(new LsEntry(Path.GetFileName(entry), isDirectory ? "directory" : "file", entry));
+                }
 
-        return FormatLsResultForPrompt(entries, hasMore);
+                return Task.FromResult(FormatLsResultForPrompt(entries, hasMore));
+            });
     }
 
-    private static string ExecuteGlob(JsonElement input, JsonElement parameters)
+    private static async Task<string> ExecuteGlobAsync(
+        JsonElement input,
+        JsonElement parameters,
+        WorkerRequestContext context,
+        CancellationToken cancellationToken)
     {
         var root = ResolveSearchRoot(input, parameters);
         using var searchParameters = AgentRuntimeGlobInputNormalizer.BuildSearchParameters(input, root);
-        var response = FileTools.Glob(searchParameters.RootElement);
-        return AgentRuntimeGlobResultFormatter.CompactForPrompt(
-            ExtractWorkerResultJson(response),
-            GlobPromptMaxChars);
+
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            root,
+            "search",
+            parameters,
+            context,
+            cancellationToken,
+            () =>
+            {
+                var response = FileTools.Glob(searchParameters.RootElement);
+                var resultJson = ExtractWorkerResultJson(response);
+                ThrowIfAccessDeniedWorkerResult(resultJson);
+                return Task.FromResult(AgentRuntimeGlobResultFormatter.CompactForPrompt(
+                    resultJson,
+                    GlobPromptMaxChars));
+            });
     }
 
     private static async Task<string> GrepAsync(
         JsonElement input,
         JsonElement parameters,
+        WorkerRequestContext context,
         CancellationToken cancellationToken)
     {
         if (!FileGrepInputNormalizer.HasUsablePattern(input))
@@ -870,11 +944,23 @@ internal static class AgentRuntimeNativeToolExecutor
 
         var root = ResolveSearchRoot(input, parameters);
         using var searchParameters = FileGrepInputNormalizer.BuildSearchParameters(input, root);
-        cancellationToken.ThrowIfCancellationRequested();
-        var response = await FileTools.GrepAsync(searchParameters.RootElement);
-        return AgentRuntimeGrepResultFormatter.CompactForPrompt(
-            ExtractWorkerResultJson(response),
-            GrepPromptMaxChars);
+
+        return await FileSystemAccess.RetryOnAccessDeniedAsync(
+            root,
+            "search",
+            parameters,
+            context,
+            cancellationToken,
+            async () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var response = await FileTools.GrepAsync(searchParameters.RootElement);
+                var resultJson = ExtractWorkerResultJson(response);
+                ThrowIfAccessDeniedWorkerResult(resultJson);
+                return AgentRuntimeGrepResultFormatter.CompactForPrompt(
+                    resultJson,
+                    GrepPromptMaxChars);
+            });
     }
 
     private static async Task<string> ExecuteShellAsync(
@@ -1833,6 +1919,27 @@ internal static class AgentRuntimeNativeToolExecutor
         return document.RootElement.TryGetProperty("result", out var result)
             ? result.GetRawText()
             : "{}";
+    }
+
+    private static void ThrowIfAccessDeniedWorkerResult(string resultJson)
+    {
+        using var document = JsonDocument.Parse(resultJson);
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("error", out var errorElement) ||
+            errorElement.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        var message = errorElement.GetString() ?? string.Empty;
+        if (message.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("access denied", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("operation not permitted", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("EACCES", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("EPERM", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnauthorizedAccessException(message);
+        }
     }
 
     private static string EncodeError(string message)

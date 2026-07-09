@@ -21,9 +21,11 @@ export interface TokenUsageWire {
   inputTokens: number
   outputTokens: number
   billableInputTokens?: number
+  /** Prompt-cache tokens written to cache (Anthropic cache_creation*, OpenAI cache_write_tokens). */
   cacheCreationTokens?: number
   cacheCreation5mTokens?: number
   cacheCreation1hTokens?: number
+  /** Prompt-cache tokens read from cache (OpenAI cached_tokens). */
   cacheReadTokens?: number
   cacheReadRatio?: number
   reasoningTokens?: number

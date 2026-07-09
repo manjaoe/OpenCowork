@@ -215,6 +215,7 @@ export async function recordUsageEvent(input: {
     inputTokens: 0,
     outputTokens: 0
   }
+  const cacheCreationTokens = getCacheCreationTokens(usage)
   const normalizedUsage: TokenUsage = {
     ...usage,
     billableInputTokens:
@@ -255,7 +256,8 @@ export async function recordUsageEvent(input: {
     input_tokens: usage.inputTokens ?? 0,
     billable_input_tokens: normalizedUsage.billableInputTokens ?? null,
     output_tokens: usage.outputTokens ?? 0,
-    cache_creation_tokens: usage.cacheCreationTokens ?? null,
+    cache_creation_tokens:
+      cacheCreationTokens > 0 ? cacheCreationTokens : (usage.cacheCreationTokens ?? null),
     cache_read_tokens: usage.cacheReadTokens ?? null,
     reasoning_tokens: usage.reasoningTokens ?? null,
     context_tokens: usage.contextTokens ?? null,

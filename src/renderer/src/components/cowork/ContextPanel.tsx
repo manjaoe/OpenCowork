@@ -35,7 +35,9 @@ import {
   calculateCost,
   formatCost,
   getBillableInputTokens,
-  getBillableTotalTokens
+  getBillableTotalTokens,
+  getCacheCreationSplit,
+  getCacheCreationTokens
 } from '@renderer/lib/format-tokens'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useChatActions } from '@renderer/hooks/use-chat-actions'
@@ -484,14 +486,15 @@ export function ContextPanel(): React.JSX.Element {
                 const totals = activeSession.messages.reduce(
                   (acc, m) => {
                     if (m.usage) {
+                      const cacheCreation = getCacheCreationTokens(m.usage)
+                      const cacheCreationSplit = getCacheCreationSplit(m.usage)
                       acc.input += getBillableInputTokens(m.usage, activeModelCfg?.type)
                       acc.output += m.usage.outputTokens
-                      if (m.usage.cacheCreationTokens)
-                        acc.cacheCreation += m.usage.cacheCreationTokens
-                      if (m.usage.cacheCreation5mTokens)
-                        acc.cacheCreation5m += m.usage.cacheCreation5mTokens
-                      if (m.usage.cacheCreation1hTokens)
-                        acc.cacheCreation1h += m.usage.cacheCreation1hTokens
+                      if (cacheCreation) acc.cacheCreation += cacheCreation
+                      if (cacheCreationSplit.fiveMinuteTokens)
+                        acc.cacheCreation5m += cacheCreationSplit.fiveMinuteTokens
+                      if (cacheCreationSplit.oneHourTokens)
+                        acc.cacheCreation1h += cacheCreationSplit.oneHourTokens
                       if (m.usage.cacheReadTokens) acc.cacheRead += m.usage.cacheReadTokens
                       if (m.usage.reasoningTokens) acc.reasoning += m.usage.reasoningTokens
                     }
@@ -519,14 +522,15 @@ export function ContextPanel(): React.JSX.Element {
                 ]
                 for (const member of allTeamMembers) {
                   if (member.usage) {
+                    const cacheCreation = getCacheCreationTokens(member.usage)
+                    const cacheCreationSplit = getCacheCreationSplit(member.usage)
                     totals.input += getBillableInputTokens(member.usage, activeModelCfg?.type)
                     totals.output += member.usage.outputTokens
-                    if (member.usage.cacheCreationTokens)
-                      totals.cacheCreation += member.usage.cacheCreationTokens
-                    if (member.usage.cacheCreation5mTokens)
-                      totals.cacheCreation5m += member.usage.cacheCreation5mTokens
-                    if (member.usage.cacheCreation1hTokens)
-                      totals.cacheCreation1h += member.usage.cacheCreation1hTokens
+                    if (cacheCreation) totals.cacheCreation += cacheCreation
+                    if (cacheCreationSplit.fiveMinuteTokens)
+                      totals.cacheCreation5m += cacheCreationSplit.fiveMinuteTokens
+                    if (cacheCreationSplit.oneHourTokens)
+                      totals.cacheCreation1h += cacheCreationSplit.oneHourTokens
                     if (member.usage.cacheReadTokens)
                       totals.cacheRead += member.usage.cacheReadTokens
                     if (member.usage.reasoningTokens)

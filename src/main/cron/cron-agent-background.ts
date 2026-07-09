@@ -176,7 +176,15 @@ interface ToolDefinition {
   inputSchema: ToolInputSchema
 }
 
-type ReasoningEffortLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'max' | 'xhigh'
+type ReasoningEffortLevel =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'ultra'
 type ResponsesWebsocketMode = 'auto' | 'disabled'
 
 interface ThinkingConfig {
@@ -486,8 +494,9 @@ function isReasoningEffortLevel(value: unknown): value is ReasoningEffortLevel {
     value === 'low' ||
     value === 'medium' ||
     value === 'high' ||
+    value === 'xhigh' ||
     value === 'max' ||
-    value === 'xhigh'
+    value === 'ultra'
   )
 }
 

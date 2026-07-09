@@ -552,6 +552,7 @@ export function SessionConversationPane({
                 onSelectFolder={sessionView.projectId ? () => setFolderDialogOpen(true) : undefined}
                 workingFolder={sessionView.workingFolder}
                 hideWorkingFolderIndicator
+                hideWorkingFolderPicker
                 onCompressContext={manualCompressContext}
                 isStreaming={isStreaming}
                 fullWidth={conversationPanelFullWidth}

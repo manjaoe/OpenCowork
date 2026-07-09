@@ -1,6 +1,7 @@
-import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
-import { rmSync } from 'fs'
+import { ipcMain, BrowserWindow, dialog, app, type IpcMainInvokeEvent } from 'electron'
+import { existsSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
+import * as path from 'path'
 import { join } from 'path'
 import { safePostMessageToWindow } from '../window-ipc'
 import {
@@ -597,6 +598,100 @@ function rememberRendererOrigin(
   }
 }
 
+const activeSecurityScopedResources = new Map<string, () => void>()
+
+function normalizeComparableFsPath(filePath: string): string {
+  const resolved = path.resolve(filePath)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function isPathInsideOrEqual(parentPath: string, candidatePath: string): boolean {
+  const parent = normalizeComparableFsPath(parentPath)
+  const candidate = normalizeComparableFsPath(candidatePath)
+  if (candidate === parent) return true
+
+  const relativePath = path.relative(parent, candidate)
+  return Boolean(relativePath) && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
+}
+
+function getSystemAccessDefaultPath(requestPath: string): string | undefined {
+  try {
+    if (existsSync(requestPath)) {
+      const stat = statSync(requestPath)
+      return stat.isDirectory() ? requestPath : path.dirname(requestPath)
+    }
+  } catch {
+    // Fall back to the parent path below.
+  }
+
+  const parentPath = path.dirname(requestPath)
+  return parentPath && parentPath !== requestPath ? parentPath : undefined
+}
+
+function rememberSecurityScopedBookmark(selectedPath: string, bookmark?: string): void {
+  if (process.platform !== 'darwin' || !bookmark) return
+
+  const key = normalizeComparableFsPath(selectedPath)
+  if (activeSecurityScopedResources.has(key)) return
+
+  try {
+    const stopAccessing = app.startAccessingSecurityScopedResource(bookmark)
+    activeSecurityScopedResources.set(key, () => {
+      stopAccessing()
+    })
+  } catch (error) {
+    console.warn(
+      `[Sidecar] Failed to start security-scoped file access: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
+  }
+}
+
+async function requestSystemFileAccess(
+  params: unknown,
+  runWindowIds: Map<string, number>,
+  sessionWindowIds: Map<string, number>
+): Promise<{ granted: boolean; canceled?: boolean; path?: string; reason?: string }> {
+  const record = normalizeRendererRequestRecord(params)
+  const requestedPath = readNonEmptyString(record.path)
+  if (!requestedPath) {
+    return { granted: false, reason: 'Missing path for system access request' }
+  }
+
+  const targetWindow = resolveRendererTargetWindow(record, runWindowIds, sessionWindowIds)
+  if (!targetWindow) {
+    return { granted: false, reason: 'No renderer available for system access request' }
+  }
+
+  const defaultPath = getSystemAccessDefaultPath(requestedPath)
+  const operation = readNonEmptyString(record.operation) ?? 'access'
+  const result = await dialog.showOpenDialog(targetWindow, {
+    title: 'Allow OpenCoWork to access this folder',
+    message: `OpenCoWork needs system permission to ${operation}:\n${requestedPath}`,
+    buttonLabel: 'Allow Access',
+    properties: ['openDirectory'],
+    defaultPath,
+    securityScopedBookmarks: process.platform === 'darwin'
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { granted: false, canceled: true, reason: 'User canceled system access request' }
+  }
+
+  const selectedPath = result.filePaths[0]
+  if (!isPathInsideOrEqual(selectedPath, requestedPath)) {
+    return {
+      granted: false,
+      path: selectedPath,
+      reason: `Selected folder does not include requested path: ${requestedPath}`
+    }
+  }
+
+  rememberSecurityScopedBookmark(selectedPath, result.bookmarks?.[0])
+  return { granted: true, path: selectedPath }
+}
+
 /**
  * Register IPC handlers for the sidecar bridge.
  * Renderer sends requests to sidecar via main process.
@@ -928,6 +1023,8 @@ export function registerSidecarHandlers(): void {
           return { success: false, error: err instanceof Error ? err.message : String(err) }
         }
       }
+      case 'fs/request-system-access':
+        return await requestSystemFileAccess(params, runWindowIds, sessionWindowIds)
       case 'plugin:exec': {
         const pluginArgs = (params ?? {}) as {
           pluginId?: string

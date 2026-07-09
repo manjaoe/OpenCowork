@@ -152,8 +152,9 @@ const REASONING_EFFORT_OPTIONS: ReasoningEffortLevel[] = [
   'low',
   'medium',
   'high',
+  'xhigh',
   'max',
-  'xhigh'
+  'ultra'
 ]
 
 const ALL_PROVIDER_FILTER = '__all__'

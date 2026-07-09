@@ -115,7 +115,11 @@ export async function withWorkspacePromptCacheKey(
   config: ProviderConfig,
   scope: WorkspacePromptCacheScope = {}
 ): Promise<ProviderConfig> {
-  if (config.type !== 'openai-responses' || hasPromptCacheKeyOverride(config)) {
+  const shouldApplyWorkspaceKey =
+    config.type === 'openai-responses' ||
+    (config.type === 'openai-chat' && config.enablePromptCache === true)
+
+  if (!shouldApplyWorkspaceKey || hasPromptCacheKeyOverride(config)) {
     return config
   }
 
