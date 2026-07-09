@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-07-08
+
+### Added
+
+- Web search block component for displaying server-side web search results with expandable source list
+- Native worker auto-restart with exponential backoff and heartbeat monitoring
+- Lifecycle events (onReconnect, onDisconnect) for native worker management
+- Support for Anthropic and OpenAI built-in web search tools
+- Permission management UI translations and full-access mode confirmation
+- Content blocks utility for upserting web search blocks during streaming
+- Builtin search enabled flag in provider store configuration
+
+### Changed
+
+- Refactored AssistantMessage to simplify debug tool call handling
+- Improved native worker resilience with crash logging and stderr capture
+- Enhanced provider store with built-in search capability detection
+
+### Fixed
+
+- Native worker now properly restarts on unexpected crashes with exponential backoff
+- Web search blocks update in place instead of stacking duplicates
+
 ## [1.1.0] - 2026-07-07
 
 ### Added
