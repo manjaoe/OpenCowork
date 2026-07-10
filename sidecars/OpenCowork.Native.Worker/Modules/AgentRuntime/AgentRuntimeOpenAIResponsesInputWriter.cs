@@ -561,10 +561,10 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
                 // effort value but selects the "pro" reasoning mode (maximum reasoning
                 // with automatic subagent task delegation). Effort stays a separate axis
                 // and defaults to medium. Guard on the model so no other model emits it.
+                // Temporarily do not send "mode":"pro"; keep the medium-effort fallback.
                 var ultraModel = JsonHelpers.GetString(provider, "model");
                 if (ultraModel == "gpt-5.6-sol" || ultraModel == "gpt-5.6-terra")
                 {
-                    writer.WriteString("mode", "pro");
                     writer.WriteString("effort", "medium");
                 }
             }
