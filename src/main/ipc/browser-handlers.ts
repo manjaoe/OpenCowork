@@ -1,11 +1,18 @@
 import {
   getBrowserEmulationStatus,
-  getBuiltInBrowserStorageSessions
+  getBuiltInBrowserStorageSessions,
+  readBrowserUserDataSource
 } from '../browser/browser-emulation'
+import { importCookiesFromLocalBrowser } from '../browser/browser-cookie-import'
+import { normalizeBrowserUserDataSource } from '../../shared/browser-plugin'
 import { registerMessagePackHandler } from './messagepack-handler'
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+interface ImportCookiesArgs {
+  source?: string
 }
 
 export function registerBrowserHandlers(): void {
@@ -31,4 +38,20 @@ export function registerBrowserHandlers(): void {
       return { success: false, error: getErrorMessage(error) }
     }
   })
+
+  registerMessagePackHandler<ImportCookiesArgs | undefined>(
+    'browser:import-cookies',
+    async (args) => {
+      try {
+        const source = args?.source
+          ? normalizeBrowserUserDataSource(args.source)
+          : readBrowserUserDataSource()
+        const result = await importCookiesFromLocalBrowser(source)
+        return { success: true, result }
+      } catch (error) {
+        console.error('[Browser] Failed to import cookies:', error)
+        return { success: false, error: getErrorMessage(error) }
+      }
+    }
+  )
 }

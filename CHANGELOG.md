@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-07-10
+
+### Added
+
+- Added support for background proxy task generation and processing, enabling sub-agents to run background tasks independently.
+- Enhanced session change review mechanism with improved detection and handling of session transitions.
+- Improved background sub-agent handling with better lifecycle management and state synchronization.
+
+### Changed
+
+- Optimized team tool usage logic for better performance and reliability in multi-agent scenarios.
+- Refined session-change detection and background task execution workflows for improved stability.
+
 ## [1.0.12] - 2026-07-10
 
 ### Added

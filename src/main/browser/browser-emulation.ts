@@ -14,7 +14,7 @@ import {
   type ConcreteBrowserUserDataSource
 } from '../../shared/browser-plugin'
 
-interface BrowserProfileCandidate {
+export interface BrowserProfileCandidate {
   browserId: ConcreteBrowserUserDataSource
   browserName: string
   dataRoot: string
@@ -213,7 +213,7 @@ function getBrowserProfileCandidates(): BrowserProfileCandidate[] {
     .filter((candidate): candidate is BrowserProfileCandidate => Boolean(candidate))
 }
 
-function resolveDetectedBrowserProfile(
+export function resolveDetectedBrowserProfile(
   browserUserDataSource: BrowserUserDataSource
 ): BrowserProfileCandidate | null {
   const candidates = getBrowserProfileCandidates()

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Globe, Image, MonitorSmartphone, Puzzle, Trash2 } from 'lucide-react'
+import { DownloadCloud, Globe, Image, MonitorSmartphone, Puzzle, Trash2 } from 'lucide-react'
 import { Switch } from '@renderer/components/ui/switch'
 import { Button } from '@renderer/components/ui/button'
 import { Textarea } from '@renderer/components/ui/textarea'
@@ -145,6 +145,7 @@ export function AppPluginPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const [selectedPluginId, setSelectedPluginId] = useState<AppPluginId>(IMAGE_PLUGIN_ID)
   const [clearingCookies, setClearingCookies] = useState(false)
+  const [importingCookies, setImportingCookies] = useState(false)
   const [browserEmulationStatus, setBrowserEmulationStatus] =
     useState<BrowserEmulationStatus | null>(null)
   const activeProjectId = useChatStore((state) => state.activeProjectId)
@@ -252,6 +253,36 @@ export function AppPluginPanel(): React.JSX.Element {
       toast.error(t('plugin.browser.cookiesClearFailed'), { description: message })
     } finally {
       setClearingCookies(false)
+    }
+  }
+
+  const handleImportBrowserCookies = async (): Promise<void> => {
+    setImportingCookies(true)
+    try {
+      const result = (await ipcClient.invoke(IPC.BROWSER_IMPORT_COOKIES, {
+        source: browserUserDataSource
+      })) as
+        | {
+            success: true
+            result: { browserName: string; imported: number; skipped: number; failed: number }
+          }
+        | { success: false; error?: string }
+      if (result.success) {
+        toast.success(
+          t('plugin.browser.cookiesImported', {
+            browserName: result.result.browserName,
+            imported: result.result.imported,
+            skipped: result.result.skipped
+          })
+        )
+      } else {
+        toast.error(t('plugin.browser.cookiesImportFailed'), { description: result.error })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error(t('plugin.browser.cookiesImportFailed'), { description: message })
+    } finally {
+      setImportingCookies(false)
     }
   }
 
@@ -492,18 +523,32 @@ export function AppPluginPanel(): React.JSX.Element {
                     <p className="text-sm font-medium">{t('plugin.browser.title')}</p>
                     <p className="text-xs text-muted-foreground">{t('plugin.browser.desc')}</p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 gap-2"
-                    onClick={() => void handleClearBrowserCookies()}
-                    disabled={clearingCookies}
-                  >
-                    <Trash2 className="size-3.5" />
-                    {clearingCookies
-                      ? t('plugin.browser.clearingCookies')
-                      : t('plugin.browser.clearCookies')}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => void handleImportBrowserCookies()}
+                      disabled={importingCookies || !browserUserDataReuseEnabled}
+                    >
+                      <DownloadCloud className="size-3.5" />
+                      {importingCookies
+                        ? t('plugin.browser.importingCookies')
+                        : t('plugin.browser.importCookies')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => void handleClearBrowserCookies()}
+                      disabled={clearingCookies}
+                    >
+                      <Trash2 className="size-3.5" />
+                      {clearingCookies
+                        ? t('plugin.browser.clearingCookies')
+                        : t('plugin.browser.clearCookies')}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="rounded-lg border bg-muted/10 p-3">

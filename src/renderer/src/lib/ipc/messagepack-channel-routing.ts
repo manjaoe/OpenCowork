@@ -75,6 +75,7 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'notify:session',
   'browser:clear-cookies',
   'browser:emulation-status',
+  'browser:import-cookies',
   'desktop:screenshot:capture',
   'desktop:input:click',
   'desktop:input:type',
