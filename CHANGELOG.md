@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.11] - 2026-07-10
+
+### Added
+
+- Added split provider persistence under `~/.open-cowork/ai-provider/`, with atomic per-provider JSON writes, automatic migration from the legacy `config.json` entry, and native-worker sync coverage.
+- Added versioned built-in provider presets and a "Restore defaults" action that refreshes built-in model definitions while preserving credentials, enabled states, and custom providers.
+
+### Changed
+
+- Reduced main-process startup work by deferring terminal, SSH, image/GIF, migration, channel-provider, updater, MCP, and database initialization until needed or after the first window begins loading.
+- Split renderer window surfaces and lazy-loaded secondary pages, update release-note rendering, Mermaid support, tokenizer data, and per-language locale bundles to improve first-paint time and reduce memory use.
+- Delayed the first Native Worker spawn until shell-environment initialization completes and moved high-volume startup diagnostics to deferred file writes.
+- Extracted SSH connection and proxy-jump payload resolution from the full SSH IPC handler so Git, cron, and sidecar consumers can load it independently.
+
+### Fixed
+
+- Prevented a rejected second app instance from accessing Electron session APIs or starting the Native Worker before app readiness, eliminating `Session can only be received when app is ready` during shutdown.
+- Temporarily stopped sending the unsupported `"mode":"pro"` parameter for GPT-5.6 Sol/Terra `ultra` requests while retaining their medium-effort fallback.
+
 ## [1.0.10] - 2026-07-10
 
 ### Added
