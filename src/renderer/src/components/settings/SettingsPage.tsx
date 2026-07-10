@@ -78,6 +78,7 @@ import { AppPluginPanel } from './AppPluginPanel'
 import { ExtensionPanel } from './ExtensionPanel'
 import { McpPanel } from './McpPanel'
 import { HooksPanel } from './HooksPanel'
+import { PermissionPanel } from './PermissionPanel'
 import { WebSearchPanel } from './WebSearchPanel'
 import { SkillsMarketPanel } from './SkillsMarketPanel'
 import { MigrationPanel } from './MigrationPanel'
@@ -431,6 +432,12 @@ const menuGroupDefs: Array<{
         icon: <Terminal className="size-4" />,
         labelKey: 'system.title',
         descKey: 'system.subtitle'
+      },
+      {
+        id: 'permission',
+        icon: <ShieldCheck className="size-4" />,
+        labelKey: 'permission.title',
+        descKey: 'permission.subtitle'
       },
       {
         id: 'pet',
@@ -3622,6 +3629,7 @@ function AboutPanel(): React.JSX.Element {
 const panelMap: Record<SettingsTab, () => React.JSX.Element> = {
   profile: ProfilePanel,
   general: GeneralPanel,
+  permission: PermissionPanel,
   system: SystemPanel,
   memory: MemoryPanel,
   analytics: AnalyticsPanel,

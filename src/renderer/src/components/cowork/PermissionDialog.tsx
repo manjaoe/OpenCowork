@@ -1,5 +1,6 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +12,16 @@ import {
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
 import { Badge } from '@renderer/components/ui/badge'
+import { Button } from '@renderer/components/ui/button'
+import { Input } from '@renderer/components/ui/input'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import {
+  createPermissionRuleId,
+  isCommandRuleTool,
+  suggestBashRulePattern,
+  validatePermissionRulePattern,
+  type PermissionRuleMode
+} from '../../../../shared/permission-policy'
 import {
   ShieldAlert,
   FileEdit,
@@ -203,6 +214,65 @@ export function PermissionDialog({
   onDeny
 }: PermissionDialogProps): React.JSX.Element {
   const { t } = useTranslation('chat')
+  const permissionPolicy = useSettingsStore((s) => s.permissionPolicy)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const [ruleEditorOpen, setRuleEditorOpen] = useState(false)
+  const [rulePattern, setRulePattern] = useState('')
+  const [ruleMode, setRuleMode] = useState<PermissionRuleMode>('wildcard')
+
+  useEffect(() => {
+    setRuleEditorOpen(false)
+    setRulePattern('')
+    setRuleMode('wildcard')
+  }, [toolCall?.id])
+
+  const isShellTool = !!toolCall && isCommandRuleTool(toolCall.name)
+  const shellCommand = isShellTool ? String(toolCall.input.command ?? '') : ''
+  const ruleError = ruleEditorOpen
+    ? validatePermissionRulePattern({ pattern: rulePattern, mode: ruleMode })
+    : null
+
+  const handleAllowAndWhitelist = (): void => {
+    if (!toolCall) return
+    if (isShellTool) {
+      setRulePattern(suggestBashRulePattern(shellCommand))
+      setRuleMode('wildcard')
+      setRuleEditorOpen(true)
+      return
+    }
+    if (!permissionPolicy.whitelistedTools.includes(toolCall.name)) {
+      updateSettings({
+        permissionPolicy: {
+          ...permissionPolicy,
+          whitelistedTools: [...permissionPolicy.whitelistedTools, toolCall.name]
+        }
+      })
+    }
+    toast.success(t('permission.whitelistAddedTool', { tool: toolCall.name }))
+    onAllow()
+  }
+
+  const handleSaveRuleAndAllow = (): void => {
+    const pattern = rulePattern.trim()
+    if (!pattern || ruleError) return
+    const exists = permissionPolicy.bashAllowRules.some(
+      (rule) => rule.pattern === pattern && rule.mode === ruleMode
+    )
+    if (!exists) {
+      updateSettings({
+        permissionPolicy: {
+          ...permissionPolicy,
+          bashAllowRules: [
+            ...permissionPolicy.bashAllowRules,
+            { id: createPermissionRuleId(), pattern, mode: ruleMode, enabled: true }
+          ]
+        }
+      })
+    }
+    toast.success(t('permission.whitelistAddedRule', { pattern }))
+    onAllow()
+  }
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!toolCall) return
@@ -215,6 +285,14 @@ export function PermissionDialog({
         const tagName = target.tagName.toLowerCase()
         if (tagName === 'textarea' || tagName === 'input' || target.isContentEditable) return
       }
+      // While the whitelist rule editor is open, Y/N must not resolve the dialog.
+      if (ruleEditorOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setRuleEditorOpen(false)
+        }
+        return
+      }
       if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault()
         onAllow()
@@ -224,7 +302,7 @@ export function PermissionDialog({
         onDeny()
       }
     },
-    [toolCall, onAllow, onDeny]
+    [toolCall, onAllow, onDeny, ruleEditorOpen]
   )
 
   useEffect(() => {
@@ -279,6 +357,57 @@ export function PermissionDialog({
                   {summary}
                 </pre>
               )}
+              {ruleEditorOpen && isShellTool && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <p className="text-xs font-medium">{t('permission.whitelistEditorTitle')}</p>
+                  <Input
+                    value={rulePattern}
+                    autoFocus
+                    className={`font-mono text-xs ${
+                      ruleError ? 'border-red-500 focus-visible:ring-red-500' : ''
+                    }`}
+                    onChange={(event) => setRulePattern(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') handleSaveRuleAndAllow()
+                    }}
+                  />
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={ruleMode === 'wildcard' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setRuleMode('wildcard')}
+                    >
+                      {t('permission.whitelistModeWildcard')}
+                    </Button>
+                    <Button
+                      variant={ruleMode === 'regex' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setRuleMode('regex')}
+                    >
+                      {t('permission.whitelistModeRegex')}
+                    </Button>
+                  </div>
+                  {ruleError && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {t('permission.whitelistInvalidPattern', { error: ruleError })}
+                    </p>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setRuleEditorOpen(false)}>
+                      {t('action.cancel', { ns: 'common' })}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!rulePattern.trim() || !!ruleError}
+                      onClick={handleSaveRuleAndAllow}
+                    >
+                      {t('permission.whitelistSave')}
+                    </Button>
+                  </div>
+                </div>
+              )}
               {workingFolder &&
                 [
                   'Bash',
@@ -319,6 +448,11 @@ export function PermissionDialog({
             {t('action.deny', { ns: 'common' })}{' '}
             <kbd className="ml-1.5 rounded border bg-muted px-1 text-[10px]">N</kbd>
           </AlertDialogCancel>
+          {permissionPolicy.enabled && !ruleEditorOpen && (
+            <Button variant="outline" onClick={handleAllowAndWhitelist}>
+              {t('permission.allowWhitelist')}
+            </Button>
+          )}
           <AlertDialogAction onClick={onAllow}>
             {t('action.allow', { ns: 'common' })}{' '}
             <kbd className="ml-1.5 rounded border bg-primary-foreground/20 px-1 text-[10px]">Y</kbd>

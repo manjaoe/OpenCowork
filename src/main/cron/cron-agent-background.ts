@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { readSettings } from '../ipc/settings-handlers'
+import { readPermissionPolicySnapshot, readSettings } from '../ipc/settings-handlers'
 import type {
   ToolCallState,
   InteractiveAgentEvent,
@@ -210,7 +210,11 @@ interface AIModelConfig {
   serviceTier?: string
   websocketUrl?: string
   websocketMode?: ResponsesWebsocketMode
+  supportsBuiltinSearch?: boolean
   enableBuiltinSearch?: boolean
+  supportsWebsocket?: boolean
+  supportsImageGeneration?: boolean
+  responsesImageGeneration?: ProviderConfig['responsesImageGeneration']
 }
 
 interface AIProviderConfigRecord {
@@ -549,8 +553,18 @@ function buildProviderConfigById(
     model?.requestOverrides,
     modelId
   )
-  const websocketUrl = model?.websocketUrl ?? provider.websocketUrl
-  const websocketMode = model?.websocketMode ?? provider.websocketMode
+  // Server-tool/transport capabilities are per-model opt-ins (default false): a relay can
+  // speak the protocol without supporting the feature, so unsupported models must send an
+  // explicit "off" rather than inherit provider-level or runtime defaults.
+  const supportsWebsocket = requestType === 'openai-responses' && model?.supportsWebsocket === true
+  const websocketUrl = supportsWebsocket
+    ? (model?.websocketUrl ?? provider.websocketUrl)
+    : undefined
+  const websocketMode = supportsWebsocket
+    ? (model?.websocketMode ?? provider.websocketMode)
+    : requestType === 'openai-responses'
+      ? 'disabled'
+      : undefined
   const thinkingConfig = model?.thinkingConfig
   const baseReasoningEffort = isReasoningEffortLevel(settings.reasoningEffort)
     ? settings.reasoningEffort
@@ -592,8 +606,21 @@ function buildProviderConfigById(
     cacheTtl: model?.cacheTtl ?? provider.cacheTtl,
     ...(model?.serviceTier ? { serviceTier: model.serviceTier } : {}),
     ...((requestType === 'anthropic' || requestType === 'openai-responses') &&
+    model?.supportsBuiltinSearch === true &&
     model?.enableBuiltinSearch === true
       ? { builtinSearchEnabled: true }
+      : {}),
+    // The runtime treats a missing image_generation config as enabled, so Responses
+    // requests always carry an explicit flag derived from the model capability.
+    ...(requestType === 'openai-responses'
+      ? {
+          responsesImageGeneration: {
+            ...(model?.responsesImageGeneration ?? {}),
+            enabled:
+              model?.supportsImageGeneration === true &&
+              model?.responsesImageGeneration?.enabled !== false
+          }
+        }
       : {}),
     ...(websocketUrl ? { websocketUrl } : {}),
     ...(websocketMode ? { websocketMode } : {}),
@@ -995,6 +1022,7 @@ async function* runNativeAgentLoop(args: {
       throw new Error(`SSH connection not found for cron agent: ${args.toolCtx.sshConnectionId}`)
     }
 
+    const permissionPolicy = readPermissionPolicySnapshot()
     const runRequest = {
       runId: args.runId,
       sessionId: args.toolCtx.sessionId ?? args.runId,
@@ -1004,6 +1032,7 @@ async function* runNativeAgentLoop(args: {
       workingFolder: args.toolCtx.workingFolder,
       sshConnectionId: args.toolCtx.sshConnectionId,
       ...(connection ? { connection } : {}),
+      ...(permissionPolicy ? { permissionPolicy } : {}),
       maxIterations: args.config.maxIterations,
       forceApproval: args.config.forceApproval === true,
       maxParallelTools: args.config.maxParallelTools,

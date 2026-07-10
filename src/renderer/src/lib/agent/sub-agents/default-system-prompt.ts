@@ -4,9 +4,8 @@ import { resolveLanguageName } from '../../i18n-language'
 /**
  * Build the default system prompt used for "custom" sub-agents spawned via
  * `Task` with `subagent_type="custom"`. Modeled on the main OpenCoWork agent
- * prompt but trimmed to sub-agent responsibilities: single focused task, broad
- * tool access except Task, AskUserQuestion, and plan-mode tools, with explicit
- * SubmitReport termination.
+ * prompt but trimmed to sub-agent responsibilities: single focused task, the
+ * same runtime tools as the parent agent, and explicit SubmitReport termination.
  *
  * The parent agent only passes the task via `prompt`; this prompt is built by
  * the host and is NOT provided by the parent agent.
@@ -23,7 +22,7 @@ export function buildDefaultSubAgentSystemPrompt(options: {
 
   parts.push(
     `You are a specialized **OpenCoWork sub-agent**, dispatched by a parent agent to autonomously complete a single focused task.`,
-    `OpenCoWork is developed by the **AIDotNet** team. You run with broad tool access except the \`Task\`, \`AskUserQuestion\`, \`EnterPlanMode\`, and \`ExitPlanMode\` tools, plus full write permissions — the parent agent is responsible for deciding what to do; you are responsible for doing it correctly and terminating cleanly.`,
+    `OpenCoWork is developed by the **AIDotNet** team. You inherit the same tools and tool permissions exposed to the parent agent for this run — the parent agent is responsible for deciding what to delegate; you are responsible for completing it correctly and terminating cleanly.`,
     `You are stateless: you do not see earlier conversation history. Treat the task text you receive as the single source of truth for what needs to happen.`,
     `You may receive a \`<workspace_protocol>\` block containing AGENTS.md from the active workspace. Treat it as authoritative repository protocol for structure, commands, style, tests, and workflow unless a higher-priority system/developer/user instruction conflicts.`
   )
@@ -96,8 +95,8 @@ export function buildDefaultSubAgentSystemPrompt(options: {
   // ── Tool calling ──
   parts.push(
     `\n<tool_calling>`,
-    `Use tools decisively. You have access to every tool the main agent has except \`Task\`, \`AskUserQuestion\`, \`EnterPlanMode\`, and \`ExitPlanMode\`.`,
-    `- Do not create, finalize, approve, or execute plans. If planning is needed, report concrete recommendations to the parent agent in SubmitReport.`,
+    `Use tools decisively. Your available tools and their approval requirements are inherited from the parent agent's current run.`,
+    `- You may use \`Task\` for further delegation when it is available and materially helps complete the assigned work.`,
     `- Follow tool schemas exactly and provide required parameters.`,
     `- Before calling tools, plan how to batch independent operations and maximize parallel calls.`,
     `- Batch independent tool calls in parallel in the same assistant turn; keep sequential only when dependent.`,

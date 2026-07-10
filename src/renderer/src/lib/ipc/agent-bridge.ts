@@ -51,9 +51,15 @@ class AgentBridgeClient {
           throw new Error('sidecar:start returned ok=false')
         }
 
-        await this.request('initialize', {
-          workingFolder: undefined
-        })
+        // Explicit timeout: an omitted timeoutMs crosses MessagePack as nil/null,
+        // which main-side default parameters do not catch.
+        await this.request(
+          'initialize',
+          {
+            workingFolder: undefined
+          },
+          30_000
+        )
         this.initialized = true
         return true
       } catch (err) {
@@ -61,7 +67,9 @@ class AgentBridgeClient {
         console.error(`[AgentBridge] Initialize failed (attempt ${attempt}/${maxAttempts}):`, err)
 
         if (attempt < maxAttempts) {
-          await ipcClient.invoke('sidecar:stop').catch(() => {})
+          // Recycle replaces the worker OS process; a plain sidecar:stop only
+          // sends a shutdown RPC that a wedged process would survive.
+          await ipcClient.invoke('sidecar:recycle').catch(() => {})
           await new Promise((resolve) => setTimeout(resolve, 250))
           continue
         }
@@ -131,6 +139,12 @@ class AgentBridgeClient {
     await ipcClient.invoke('sidecar:stop')
     this.initialized = false
   }
+
+  // The main process replaces the worker process transparently (supervised
+  // restart); the replacement never saw this client's initialize handshake.
+  markRuntimeRestarted(): void {
+    this.initialized = false
+  }
 }
 
 /**
@@ -148,6 +162,13 @@ export async function canSidecarHandle(capability: string): Promise<boolean> {
  * Singleton bridge client instance.
  */
 export const agentBridge = new AgentBridgeClient()
+
+ipcClient.on('sidecar:lifecycle', (payload) => {
+  const state = (payload as { state?: string } | undefined)?.state
+  if (state !== 'disconnected' && state !== 'reconnected') return
+  console.log(`[AgentBridge] sidecar ${state}; initialize handshake reset`)
+  agentBridge.markRuntimeRestarted()
+})
 
 // Bounded so the debug panel surfaces a failure quickly instead of hanging on
 // the 60s native-worker default when a body read stalls.

@@ -1,5 +1,6 @@
 export type { BuiltinProviderPreset } from './types'
 
+import type { ReasoningEffortLevel } from '../../lib/api/types'
 import { routinAiPlanPreset, routinAiPreset } from './routin-ai'
 import { openaiPreset } from './openai'
 import { anthropicPreset } from './anthropic'
@@ -23,21 +24,77 @@ import { volcenginePreset } from './volcengine'
 import { xaiPreset } from './x-ai'
 import type { BuiltinProviderPreset } from './types'
 
-// Provider protocols whose native/server-side web search we can inject: Anthropic
-// exposes the `web_search_20250305` server tool, and the OpenAI Responses API exposes
-// the `web_search` tool. Chat models on these protocols ship with built-in search
-// enabled by default; users can still opt out per-model (provider settings) or
-// per-session (input-box model settings). Explicit preset values are never overridden.
-function applyBuiltinSearchDefaults(preset: BuiltinProviderPreset): BuiltinProviderPreset {
+// Server-tool capabilities are per-model opt-ins that default to false: speaking the
+// anthropic/openai-responses protocol is not enough, since relay/aggregator endpoints
+// usually don't implement the server-side tools. Only first-party presets listed here
+// mark their chat models as supporting them; users can still flip support per model
+// in provider settings. Explicit preset values are never overridden.
+//
+// - Built-in web search: Anthropic `web_search_20250305`, OpenAI Responses `web_search`
+//   (official API + ChatGPT-backed Codex). Supported models default to enabled.
+// - Responses `image_generation` tool: official OpenAI API only.
+// - Responses WebSocket transport: no default here; presets that support it (e.g.
+//   Routin AI gpt-5.4+) set `supportsWebsocket` explicitly on their model literals.
+const BUILTIN_SEARCH_CAPABLE_PRESETS = new Set(['openai', 'anthropic', 'codex-oauth'])
+const IMAGE_GENERATION_CAPABLE_PRESETS = new Set(['openai'])
+
+function applyServerToolCapabilityDefaults(preset: BuiltinProviderPreset): BuiltinProviderPreset {
   let changed = false
   const defaultModels = preset.defaultModels.map((model) => {
     const requestType = model.type ?? preset.type
-    const category = model.category ?? 'chat'
-    const supported =
-      category === 'chat' && (requestType === 'anthropic' || requestType === 'openai-responses')
-    if (!supported || model.enableBuiltinSearch !== undefined) return model
+    if ((model.category ?? 'chat') !== 'chat') return model
+
+    const next = { ...model }
+    const searchCapable =
+      BUILTIN_SEARCH_CAPABLE_PRESETS.has(preset.builtinId) &&
+      (requestType === 'anthropic' || requestType === 'openai-responses')
+    if (searchCapable && next.supportsBuiltinSearch === undefined) {
+      next.supportsBuiltinSearch = true
+      if (next.enableBuiltinSearch === undefined) next.enableBuiltinSearch = true
+    }
+
+    const imageGenerationCapable =
+      IMAGE_GENERATION_CAPABLE_PRESETS.has(preset.builtinId) && requestType === 'openai-responses'
+    if (imageGenerationCapable && next.supportsImageGeneration === undefined) {
+      next.supportsImageGeneration = true
+    }
+
+    if (
+      next.supportsBuiltinSearch === model.supportsBuiltinSearch &&
+      next.enableBuiltinSearch === model.enableBuiltinSearch &&
+      next.supportsImageGeneration === model.supportsImageGeneration
+    ) {
+      return model
+    }
     changed = true
-    return { ...model, enableBuiltinSearch: true }
+    return next
+  })
+  return changed ? { ...preset, defaultModels } : preset
+}
+
+// "Ultra" is a universal pseudo reasoning tier layered on top of every model that
+// already exposes a reasoning-effort selector. Selecting it does NOT send a real
+// "ultra" effort to any provider — the sidecar caps the actual effort at the model's
+// highest real level (the entry right below "ultra") and the app only adds a
+// multi-agent authorization block to the system prompt (see MULTI_AGENT_MODE_PROMPT).
+// We append it here so the whole catalog offers it without editing each preset, and
+// skip models that already list it (e.g. gpt-5.6 terra/sol).
+const ULTRA_REASONING_LEVEL: ReasoningEffortLevel = 'ultra'
+
+function applyUltraReasoningTierDefault(preset: BuiltinProviderPreset): BuiltinProviderPreset {
+  let changed = false
+  const defaultModels = preset.defaultModels.map((model) => {
+    const levels = model.thinkingConfig?.reasoningEffortLevels
+    if (!levels?.length || levels.includes(ULTRA_REASONING_LEVEL)) return model
+    changed = true
+    return {
+      ...model,
+      thinkingConfig: {
+        ...model.thinkingConfig,
+        bodyParams: model.thinkingConfig?.bodyParams ?? {},
+        reasoningEffortLevels: [...levels, ULTRA_REASONING_LEVEL]
+      }
+    }
   })
   return changed ? { ...preset, defaultModels } : preset
 }
@@ -71,4 +128,6 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   bigmodelPreset,
   volcenginePreset,
   xaiPreset
-].map(applyBuiltinSearchDefaults)
+]
+  .map(applyServerToolCapabilityDefaults)
+  .map(applyUltraReasoningTierDefault)

@@ -2,7 +2,8 @@ import type { BuiltinProviderPreset } from './types'
 
 export const openaiPreset: BuiltinProviderPreset = {
   builtinId: 'openai',
-  version: 1,
+  // v2: server-tool capability flags (supportsBuiltinSearch/supportsImageGeneration)
+  version: 2,
   name: 'OpenAI',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.openai.com/v1',

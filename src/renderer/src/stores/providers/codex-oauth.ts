@@ -2,7 +2,8 @@ import type { BuiltinProviderPreset } from './types'
 
 export const codexOAuthPreset: BuiltinProviderPreset = {
   builtinId: 'codex-oauth',
-  version: 1,
+  // v2: server-tool capability flags (supportsBuiltinSearch)
+  version: 2,
   name: 'Codex (OAuth)',
   type: 'openai-responses',
   defaultBaseUrl: 'https://chatgpt.com/backend-api/codex',
@@ -37,7 +38,7 @@ export const codexOAuthPreset: BuiltinProviderPreset = {
     usePkce: true
   },
   ui: { hideOAuthSettings: true },
-  userAgent: 'codex_cli_rs/0.76.0 (Windows 10.0.26200; x86_64) vscode/1.105.1',
+  userAgent: 'codex_cli_rs/0.144.1 (Windows 10.0.26200; x86_64) vscode/1.105.1',
   requestOverrides: {
     headers: {
       'openai-beta': 'responses=experimental',

@@ -59,6 +59,10 @@ export class NativeAgentRuntimeManager {
     return getNativeWorker().onDisconnect(listener)
   }
 
+  onReconnect(listener: () => void): () => void {
+    return getNativeWorker().onReconnect(listener)
+  }
+
   hasActiveRuns(): boolean {
     return this.activeRunIds.size > 0
   }

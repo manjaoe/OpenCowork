@@ -16,6 +16,46 @@
     "title": "Desktop Pet",
     "subtitle": "A little capybara that lives on your desktop"
   },
+  "permission": {
+    "title": "Permissions",
+    "subtitle": "Tool whitelist & shell command rules",
+    "master": {
+      "title": "Enable permission whitelist",
+      "description": "Whitelisted tools and matching shell commands skip confirmation; blacklisted commands are always rejected. Dangerous operations not covered by a rule still ask for confirmation."
+    },
+    "precedence": {
+      "description": "Order of evaluation: command blacklist (always rejects — even with auto-approve on) → tool whitelist / command whitelist (skip confirmation) → everything else asks for confirmation."
+    },
+    "wildcardHelp": "Wildcard patterns match the whole command and * matches any text — e.g. npm run *. Regex whitelist rules must match the whole command; regex blacklist rules match anywhere. Every part of a compound command (&&, ;, |) must be whitelisted. Matching is case-insensitive.",
+    "tools": {
+      "title": "Tool whitelist",
+      "description": "These tools run without asking for confirmation. Entries may use * wildcards (e.g. mcp__github__*).",
+      "placeholder": "Tool name, e.g. Write",
+      "add": "Add",
+      "suggestions": "Suggestions:",
+      "empty": "No whitelisted tools yet",
+      "duplicate": "This tool is already whitelisted",
+      "remove": "Remove {{tool}}",
+      "commandToolWarning": "A shell tool (Bash/Shell/Monitor/PowerShell) is whitelisted — every command it runs will skip confirmation except blacklist hits."
+    },
+    "bashAllow": {
+      "title": "Command whitelist (Bash)",
+      "description": "Shell commands matching an enabled rule run without confirmation."
+    },
+    "bashDeny": {
+      "title": "Command blacklist (Bash)",
+      "description": "Shell commands matching an enabled rule are always rejected — highest priority, overrides auto-approve and the whitelist."
+    },
+    "rules": {
+      "add": "Add rule",
+      "patternPlaceholder": "e.g. npm run * or ^git (status|log)\\b",
+      "modeWildcard": "Wildcard",
+      "modeRegex": "Regex",
+      "empty": "No rules yet",
+      "invalidPattern": "Invalid pattern: {{error}}",
+      "delete": "Delete rule"
+    }
+  },
   "hooks": {
     "title": "Hooks",
     "subtitle": "Manage OpenCowork lifecycle hooks.",
@@ -1135,9 +1175,17 @@
     "supportsComputerUse": "Supports Computer Use",
     "enableComputerUse": "Enable Computer Use",
     "computerUseEnabled": "Computer Use enabled",
+    "supportsBuiltinSearch": "Supports built-in web search",
+    "supportsBuiltinSearchDesc": "The endpoint implements the provider's native web search server tool (Claude / OpenAI Responses). Most relay endpoints do not.",
     "enableBuiltinSearch": "Enable built-in web search",
     "enableBuiltinSearchDesc": "Use the provider's native web search (Claude / OpenAI Responses) instead of a client tool.",
     "builtinSearchEnabled": "Built-in search enabled",
+    "supportsFastMode": "Supports Fast mode",
+    "supportsFastModeDesc": "The endpoint accepts the OpenAI priority service tier for faster responses.",
+    "supportsWebsocket": "Supports WebSocket protocol",
+    "supportsWebsocketDesc": "The endpoint offers the OpenAI Responses WebSocket transport.",
+    "supportsImageGeneration": "Supports image generation",
+    "supportsImageGenerationDesc": "The endpoint implements the OpenAI Responses image_generation server tool.",
     "supportsThinking": "Supports extended thinking",
     "oauthLogin": "OAuth Login",
     "oauthConnected": "Connected",

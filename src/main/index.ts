@@ -77,6 +77,7 @@ import { initializeHookRuntimeSettings } from './hooks/hooks-service'
 import { registerSidecarHandlers, getSidecarManager } from './ipc/sidecar-manager'
 import {
   getNativeWorker,
+  latchNativeWorkerShutdown,
   setNativeWorkerStartupBarrier,
   stopNativeWorker
 } from './lib/native-worker'
@@ -1283,6 +1284,9 @@ app.on('child-process-gone', (_event, details) => {
 
 app.on('before-quit', () => {
   isQuiting = true
+  // Permanently block worker respawns first: a straggler request racing this
+  // handler could otherwise re-arm supervision and spawn a leaked process.
+  latchNativeWorkerShutdown()
   flushBuiltInBrowserStorage()
   void flushSettingsSync()
   void stopNativeWorker()

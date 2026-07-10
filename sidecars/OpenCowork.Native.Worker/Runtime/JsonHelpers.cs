@@ -86,6 +86,37 @@ internal static class JsonHelpers
         return null;
     }
 
+    // "ultra" is a universal pseudo reasoning tier: the app offers it on every
+    // reasoning-capable model, but it is never a real API effort value. Selecting it
+    // runs the model at its highest real reasoning level (the top non-"ultra" entry in
+    // reasoningEffortLevels) and only adds a multi-agent system-prompt block app-side.
+    // Map it back to that real level here so no provider ever receives "ultra". Any
+    // non-"ultra" value is returned unchanged.
+    public static string? ResolveEffectiveReasoningEffort(string? selected, JsonElement thinkingConfig)
+    {
+        if (string.IsNullOrWhiteSpace(selected) || selected != "ultra")
+        {
+            return selected;
+        }
+        if (thinkingConfig.ValueKind == JsonValueKind.Object &&
+            thinkingConfig.TryGetProperty("reasoningEffortLevels", out var levels) &&
+            levels.ValueKind == JsonValueKind.Array)
+        {
+            string? top = null;
+            foreach (var item in levels.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String &&
+                    item.GetString() is { Length: > 0 } level &&
+                    level != "ultra")
+                {
+                    top = level;
+                }
+            }
+            return top;
+        }
+        return null;
+    }
+
     public static string[] GetStringArray(JsonElement element, string name)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var property))

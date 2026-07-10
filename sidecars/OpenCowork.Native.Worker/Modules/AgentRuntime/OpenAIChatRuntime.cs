@@ -1113,6 +1113,29 @@ internal static class OpenAIChatRuntime
             results.Any(result => result.ShouldStop));
     }
 
+    private static bool ComputeRequiresApproval(
+        JsonElement parameters,
+        AgentRuntimeNativeToolCall call,
+        bool nativeTool,
+        AgentRuntimePermissionPolicy permissionPolicy)
+    {
+        // forceApproval is an explicit per-run escalation and beats the whitelist;
+        // the deny branch in ExecuteSingleToolCallAsync beats both.
+        if (JsonHelpers.GetBool(parameters, "forceApproval", false))
+        {
+            return true;
+        }
+        if (!nativeTool)
+        {
+            return false;
+        }
+        if (!AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters))
+        {
+            return false;
+        }
+        return !permissionPolicy.SkipsApproval(call.Name, call.Input);
+    }
+
     private static async Task<AgentRuntimeSingleToolExecutionResult> ExecuteSingleToolCallAsync(
         JsonElement parameters,
         AgentRuntimeNativeToolCall originalCall,
@@ -1125,8 +1148,8 @@ internal static class OpenAIChatRuntime
         WorkerLog.Debug(
             $"agent tool dispatch runId={state.RunId} tool={call.Name} id={call.Id} " +
             $"executionPath={(nativeTool ? "native-aot" : "native-missing")}");
-        var requiresApproval = JsonHelpers.GetBool(parameters, "forceApproval", false) ||
-            (nativeTool && AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters));
+        var permissionPolicy = AgentRuntimePermissionPolicy.Resolve(parameters);
+        var requiresApproval = ComputeRequiresApproval(parameters, call, nativeTool, permissionPolicy);
 
         var preHook = await AgentRuntimeHooks.RunPreToolUseAsync(
             parameters,
@@ -1139,8 +1162,7 @@ internal static class OpenAIChatRuntime
         {
             call = call with { Input = preHook.UpdatedInput.Value.Clone() };
             nativeTool = AgentRuntimeNativeToolExecutor.CanExecute(call.Name, parameters);
-            requiresApproval = JsonHelpers.GetBool(parameters, "forceApproval", false) ||
-                (nativeTool && AgentRuntimeNativeToolExecutor.RequiresApproval(call.Name, call.Input, parameters));
+            requiresApproval = ComputeRequiresApproval(parameters, call, nativeTool, permissionPolicy);
         }
         var pendingCall = new AgentRuntimeToolCallState(
             call.Id,
@@ -1159,6 +1181,34 @@ internal static class OpenAIChatRuntime
                     call.Name,
                     call.Input,
                     call.ExtraContent)));
+
+        // Blacklist verdict is computed on the FINAL input (post PreToolUse UpdatedInput) and
+        // takes precedence over everything, including forceApproval and renderer autoApprove.
+        var permissionDenyReason = permissionPolicy.EvaluateDenyReason(call.Name, call.Input);
+        if (permissionDenyReason is not null)
+        {
+            var rejectedContent = CreateStringElement(permissionDenyReason);
+            var rejectedAt = NowMs();
+            await AgentRuntimeTools.EmitAsync(
+                state,
+                context,
+                new AgentRuntimeStreamEvent(
+                    "tool_call_result",
+                    ToolCall: new AgentRuntimeToolCallState(
+                        call.Id,
+                        call.Name,
+                        call.Input,
+                        "error",
+                        rejectedContent,
+                        permissionDenyReason,
+                        requiresApproval,
+                        rejectedAt,
+                        rejectedAt)));
+            return new AgentRuntimeSingleToolExecutionResult(
+                new AgentRuntimeToolResult(call.Id, rejectedContent, true),
+                hookContextTexts,
+                false);
+        }
 
         if (preHook.Blocked)
         {
@@ -1507,6 +1557,7 @@ internal static class OpenAIChatRuntime
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
             var omitted = GetOmittedBodyKeys(provider);
+            AgentRuntimeOpenAIPromptCache.SuppressWireCacheMarkers(omitted);
             writer.WriteStartObject();
             if (!omitted.Contains("model"))
             {
@@ -2264,9 +2315,13 @@ internal static class OpenAIChatRuntime
 
         if (thinkingEnabled &&
             !omitted.Contains("reasoning_effort") &&
-            JsonHelpers.GetString(provider, "reasoningEffort") is { Length: > 0 } reasoningEffort)
+            JsonHelpers.GetString(provider, "reasoningEffort") is { Length: > 0 } reasoningEffort &&
+            JsonHelpers.ResolveEffectiveReasoningEffort(reasoningEffort, thinkingConfig)
+                is { Length: > 0 } effectiveEffort)
         {
-            writer.WriteString("reasoning_effort", reasoningEffort);
+            // "ultra" is a pseudo-tier mapped to the model's top real level; every other
+            // value passes through unchanged. See JsonHelpers.ResolveEffectiveReasoningEffort.
+            writer.WriteString("reasoning_effort", effectiveEffort);
         }
     }
 

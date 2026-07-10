@@ -53,8 +53,10 @@ All fields are optional and additive to the V1 manifest:
 - `skills`: folder of skill folders (each contains a `SKILL.md`), or a single skill folder with a
   `SKILL.md` at its root. Synced into the user skills directory while the extension is enabled.
 - `agents`: folder of sub-agent Markdown files (frontmatter: `name`, `description`, `icon`,
-  `allowedTools`, `maxIterations`). Synced into `~/.open-cowork/agents/` with an
-  `<extensionId>--` filename prefix; the agent name comes from frontmatter.
+  `maxIterations`). Sub-agents inherit the parent agent's current tools; legacy `allowedTools`
+  and `disallowedTools` fields are accepted but not enforced. Files are synced into
+  `~/.open-cowork/agents/` with an `<extensionId>--` filename prefix; the agent name comes from
+  frontmatter.
 - `commands`: folder of slash-command Markdown files. Synced into `~/.open-cowork/commands/`
   under their own filenames. A pre-existing user command with the same name is never
   overwritten; the sync skips it and logs a warning.

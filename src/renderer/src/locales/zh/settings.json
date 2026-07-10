@@ -16,6 +16,46 @@
     "title": "桌面宠物",
     "subtitle": "住在你桌面上的小卡皮巴拉"
   },
+  "permission": {
+    "title": "权限管理",
+    "subtitle": "工具白名单与命令黑白名单规则",
+    "master": {
+      "title": "启用权限白名单",
+      "description": "白名单中的工具和匹配的命令将跳过二次确认；黑名单命令始终被拒绝。未被规则覆盖的危险操作仍需确认。"
+    },
+    "precedence": {
+      "description": "生效顺序：命令黑名单（始终拒绝，优先级最高，全局自动批准也无法绕过）→ 工具白名单 / 命令白名单（跳过确认）→ 其余危险操作仍需二次确认。"
+    },
+    "wildcardHelp": "通配符模式匹配完整命令，* 匹配任意文本，例如 npm run *。正则白名单规则需匹配完整命令，正则黑名单规则匹配任意位置。复合命令（&&、;、|）的每一段都必须命中白名单。匹配不区分大小写。",
+    "tools": {
+      "title": "工具白名单",
+      "description": "以下工具将无需确认直接执行。支持 * 通配符（例如 mcp__github__*）。",
+      "placeholder": "工具名称，例如 Write",
+      "add": "添加",
+      "suggestions": "建议：",
+      "empty": "暂无白名单工具",
+      "duplicate": "该工具已在白名单中",
+      "remove": "移除 {{tool}}",
+      "commandToolWarning": "已将 Shell 类工具（Bash/Shell/Monitor/PowerShell）加入白名单——它执行的所有命令都会跳过确认（黑名单命中除外）。"
+    },
+    "bashAllow": {
+      "title": "命令白名单（Bash）",
+      "description": "匹配已启用规则的命令将无需确认直接执行。"
+    },
+    "bashDeny": {
+      "title": "命令黑名单（Bash）",
+      "description": "匹配已启用规则的命令将始终被拒绝——优先级最高，可覆盖自动批准和白名单。"
+    },
+    "rules": {
+      "add": "添加规则",
+      "patternPlaceholder": "例如 npm run * 或 ^git (status|log)\\b",
+      "modeWildcard": "通配符",
+      "modeRegex": "正则",
+      "empty": "暂无规则",
+      "invalidPattern": "无效的规则：{{error}}",
+      "delete": "删除规则"
+    }
+  },
   "hooks": {
     "title": "钩子",
     "subtitle": "管理 OpenCowork 生命周期钩子。",
@@ -1135,9 +1175,17 @@
     "supportsComputerUse": "支持 Computer Use",
     "enableComputerUse": "启用 Computer Use",
     "computerUseEnabled": "Computer Use 已启用",
+    "supportsBuiltinSearch": "支持内置联网搜索",
+    "supportsBuiltinSearchDesc": "该端点实现了服务商原生联网搜索工具（Claude / OpenAI Responses）。大多数中转端点不支持。",
     "enableBuiltinSearch": "启用模型内置搜索",
     "enableBuiltinSearchDesc": "使用模型服务商的原生联网搜索（Claude / OpenAI Responses），而非客户端搜索工具。",
     "builtinSearchEnabled": "内置搜索已启用",
+    "supportsFastMode": "支持 Fast 模式",
+    "supportsFastModeDesc": "该端点支持 OpenAI priority 服务档位，可加速响应。",
+    "supportsWebsocket": "支持 WebSocket 协议",
+    "supportsWebsocketDesc": "该端点提供 OpenAI Responses WebSocket 传输。",
+    "supportsImageGeneration": "支持图片生成",
+    "supportsImageGenerationDesc": "该端点实现了 OpenAI Responses image_generation 服务端工具。",
     "supportsThinking": "支持扩展思考",
     "oauthLogin": "OAuth 登录",
     "oauthConnected": "已连接",

@@ -7,6 +7,37 @@ import type { ActiveTeam } from '../../stores/team-store'
 import { resolveLanguageName } from '../i18n-language'
 import { buildParallelToolCallsPrompt } from './parallel-tool-calls-prompt'
 
+/**
+ * Injected into the system prompt when the user selects the "ultra" reasoning tier.
+ * Ultra never sends a real "ultra" effort to the provider — the sidecar caps the actual
+ * effort at the model's highest real level. This block is ultra's only extra behavior: it
+ * pushes the model to reason harder about the task and to delegate independent work to
+ * sub-agents aggressively and in parallel, with explicit verification.
+ */
+export const MULTI_AGENT_MODE_PROMPT = `<multi_agent_mode>
+Active multi-agent authorization is enabled. The user escalated this turn to the highest reasoning tier — treat the task as hard, high-stakes work that justifies more thinking and aggressive delegation, not a quick answer. This authorization stays valid until a later multi_agent_mode developer message changes it.
+
+**Reason before you act.**
+- Fully understand the request and the relevant code/context before changing anything. Restate the real objective, the hard constraints, and what "done and correct" concretely means.
+- Decompose the work into independent workstreams plus a dependency order. Name explicitly what can run in parallel and what must be sequential.
+- For consequential decisions, weigh more than one approach and choose deliberately instead of committing to the first path that appears.
+- Keep a plan you actively maintain (Task tools when available) and update it as findings change.
+
+**Delegate aggressively and in parallel.**
+- Default to fanning independent work out to sub-agents via the Task tool. Any self-contained surface — a subsystem to map, a file set to read, a module to implement, a hypothesis to test — is a candidate for its own sub-agent.
+- Launch independent sub-agents concurrently: put multiple Task tool_use blocks in a single assistant turn instead of awaiting them one at a time.
+- Give each sub-agent one clear, self-contained brief: the goal, the context it needs (it sees no conversation history), the exact deliverable, and the expected output shape. Assign at most one writer per file to avoid concurrent-edit conflicts.
+- Use these patterns deliberately:
+  - Parallel exploration — several sub-agents map different subsystems at once; you synthesize their reports.
+  - Pipeline — one sub-agent implements while another independently verifies (tests, typecheck, review).
+  - Adversarial verification — for anything nontrivial or risky, spawn an independent sub-agent to try to disprove the result or find the bug. Treat unverified work as unfinished.
+
+**Stay the orchestrator.**
+- You own the final synthesis, cross-checking, and decisions — sub-agent output is input, not the last word. Reconcile conflicting reports yourself.
+- Do not delegate trivial work whose round-trip costs more than doing it inline (single-file reads, one-line edits, a specific known lookup).
+- Scale the effort to the task: a small fan-out for a modest job, a larger structured decomposition with verification for a complex one.
+</multi_agent_mode>`
+
 export type PromptEnvironmentContext = {
   target: 'local' | 'ssh'
   operatingSystem: string
@@ -316,7 +347,7 @@ export function buildSystemPrompt(options: {
       `**You are currently in Plan Mode.** Explore the codebase and produce a detailed implementation plan (not code).`,
       `\n**RULES:**`,
       `- Prioritize investigation with Read/Glob/Grep and the Task tool. Write operations are allowed when the planning work needs them, but the plan file is the deliverable.`,
-      `- Use Task only for investigation. The lead agent must write the plan file and call ExitPlanMode itself; sub-agents cannot create or finalize plans.`,
+      `- Sub-agents inherit the same tools exposed to this run. When delegating planning work, give one agent clear ownership of the plan file and avoid concurrent edits.`,
       `- Ask the user when requirements are unclear or multiple valid approaches exist.`,
       `- If you entered Plan Mode from Clarify mode, plan creation is mandatory. Enter only after questioning is exhausted or the user explicitly asks to move on, and once here do not bounce back into open-ended clarification.`,
       `- Convert non-blocking uncertainty into explicit assumptions or risks inside the plan instead of delaying plan delivery.`,

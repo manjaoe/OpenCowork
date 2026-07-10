@@ -586,11 +586,23 @@ export interface AIModelConfig {
   /** Whether Computer Use is enabled for this model */
   enableComputerUse?: boolean
   /**
+   * Whether this model supports the provider's built-in/native web search server tool
+   * (Anthropic `web_search_20250305`, OpenAI Responses `web_search`). Defaults to false —
+   * many relay/proxy endpoints speak these protocols without implementing the server tool.
+   */
+  supportsBuiltinSearch?: boolean
+  /**
    * Whether the provider's built-in/native web search tool is enabled for this model.
-   * Resolves to a provider-specific server tool (Anthropic `web_search_20250305`,
-   * OpenAI Responses `web_search`). Only meaningful for `anthropic`/`openai-responses`.
+   * Only effective when `supportsBuiltinSearch` is true.
    */
   enableBuiltinSearch?: boolean
+  /** Whether this model supports the OpenAI Responses WebSocket transport. Defaults to false. */
+  supportsWebsocket?: boolean
+  /**
+   * Whether this model supports the OpenAI Responses `image_generation` server tool.
+   * Defaults to false; the tool is only injected when this is true.
+   */
+  supportsImageGeneration?: boolean
   /** Configuration describing how to enable thinking for this model */
   thinkingConfig?: ThinkingConfig
   /** OpenAI Responses: summary of reasoning (auto/concise/detailed) */

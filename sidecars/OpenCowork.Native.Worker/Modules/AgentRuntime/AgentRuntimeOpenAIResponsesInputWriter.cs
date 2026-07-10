@@ -20,6 +20,7 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
             var omitted = AgentRuntimeProviderSupport.GetOmittedBodyKeys(provider);
+            AgentRuntimeOpenAIPromptCache.SuppressWireCacheMarkers(omitted);
             writer.WriteStartObject();
             if (!omitted.Contains("model"))
             {
@@ -553,25 +554,13 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
             return false;
         }
 
-        if (JsonHelpers.GetString(provider, "reasoningEffort") is { Length: > 0 } reasoningEffort)
+        if (JsonHelpers.GetString(provider, "reasoningEffort") is { Length: > 0 } reasoningEffort &&
+            JsonHelpers.ResolveEffectiveReasoningEffort(reasoningEffort, thinkingConfig)
+                is { Length: > 0 } effectiveEffort)
         {
-            if (reasoningEffort == "ultra")
-            {
-                // "Ultra" is a gpt-5.6 terra/sol-only tier: it is not a Responses API
-                // effort value but selects the "pro" reasoning mode (maximum reasoning
-                // with automatic subagent task delegation). Effort stays a separate axis
-                // and defaults to medium. Guard on the model so no other model emits it.
-                // Temporarily do not send "mode":"pro"; keep the medium-effort fallback.
-                var ultraModel = JsonHelpers.GetString(provider, "model");
-                if (ultraModel == "gpt-5.6-sol" || ultraModel == "gpt-5.6-terra")
-                {
-                    writer.WriteString("effort", "medium");
-                }
-            }
-            else
-            {
-                writer.WriteString("effort", reasoningEffort);
-            }
+            // "ultra" is a pseudo-tier mapped to the model's top real level; every other
+            // value passes through unchanged. See JsonHelpers.ResolveEffectiveReasoningEffort.
+            writer.WriteString("effort", effectiveEffort);
         }
         if (JsonHelpers.GetString(provider, "responseSummary") is { Length: > 0 } summary)
         {
@@ -655,6 +644,11 @@ internal static partial class AgentRuntimeOpenAIResponsesProvider
 
     private static string? ResolvePromptCacheKeyHash(JsonElement provider)
     {
+        if (!AgentRuntimeOpenAIPromptCache.WireCacheMarkersEnabled)
+        {
+            return null;
+        }
+
         var value = ResolvePromptCacheKey(provider);
         if (string.IsNullOrWhiteSpace(value))
         {

@@ -3,7 +3,7 @@ import { existsSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import * as path from 'path'
 import { join } from 'path'
-import { safePostMessageToWindow } from '../window-ipc'
+import { safePostMessageToWindow, safeSendMessagePackToAllWindows } from '../window-ipc'
 import {
   AGENT_STREAM_MSGPACK_CHANNEL,
   decodeAgentStreamEnvelope,
@@ -12,6 +12,7 @@ import {
 import type { AgentStreamEvent, ToolCallStateWire } from '../../shared/agent-stream-protocol'
 import { AGENT_STREAM_PROTOCOL_VERSION } from '../../shared/agent-stream-protocol'
 import type { InteractiveAgentEvent, ToolCallState } from '../../shared/agent-loop-types'
+import { readPermissionPolicySnapshot } from './settings-handlers'
 import {
   SIDECAR_APPROVAL_REQUEST_MSGPACK_CHANNEL,
   SIDECAR_APPROVAL_RESPONSE_MSGPACK_CHANNEL,
@@ -32,6 +33,7 @@ import {
   desktopInputType
 } from './desktop-control'
 import { getNativeAgentRuntimeManager } from './native-agent-runtime'
+import { stopNativeWorker } from '../lib/native-worker'
 import { getNativeSshConnectionPayload } from './ssh-connection-payload'
 import {
   executeChannelSpecificPluginTool,
@@ -126,6 +128,7 @@ type SidecarBridgeManager = {
   ) => void
   setReverseCancelHandler: (handler: (id: number | string, method?: string) => void) => void
   onDisconnect: (listener: () => void) => () => void
+  onReconnect: (listener: () => void) => () => void
   setSessionVisibility: (sessionId: string, visible: boolean) => void
   start: () => Promise<boolean>
   ensureStarted: () => Promise<boolean>
@@ -891,6 +894,16 @@ export function registerSidecarHandlers(): void {
     }
   })
 
+  // Tell every renderer when the worker goes away or comes back so client-side
+  // state tied to a worker process (e.g. the agent-bridge initialize handshake)
+  // does not go stale across supervised restarts.
+  manager.onDisconnect(() => {
+    safeSendMessagePackToAllWindows('sidecar:lifecycle', { state: 'disconnected' })
+  })
+  manager.onReconnect(() => {
+    safeSendMessagePackToAllWindows('sidecar:lifecycle', { state: 'reconnected' })
+  })
+
   // When the worker dies mid-stream the renderer never receives a terminal
   // event and hangs on the run. Synthesize error + loop_end for each active run
   // so the UI fails gracefully; the supervisor respawns the worker underneath.
@@ -1162,6 +1175,17 @@ export function registerSidecarHandlers(): void {
     return { ok: true }
   })
 
+  // Recovery lever that actually replaces the OS process. sidecar:stop only
+  // sends a shutdown RPC — a wedged worker survives it, so a renderer retry
+  // would keep talking to the same broken process.
+  registerSidecarMessagePackHandler<undefined>('sidecar:recycle', async () => {
+    console.warn('[Sidecar] recycle requested: replacing native worker process')
+    await manager.stop().catch(() => {})
+    await stopNativeWorker()
+    const ready = await manager.ensureStarted()
+    return { ok: ready }
+  })
+
   registerMessagePackInvokeHandler<{
     method: string
     params?: unknown
@@ -1203,6 +1227,19 @@ export function registerSidecarHandlers(): void {
     if (!ready) throw new Error('SIDECAR_UNAVAILABLE')
     const enrichedParams = await prepareGoalAwareAgentRunParams(params, manager)
     const hookAdjustedParams = await runSessionStartHook(enrichedParams)
+    // Defense in depth: guarantee the permission whitelist snapshot is present even for
+    // run initiators that bypass buildSidecarAgentRunRequest. Renderer-provided policy wins.
+    if (
+      hookAdjustedParams &&
+      typeof hookAdjustedParams === 'object' &&
+      !Array.isArray(hookAdjustedParams) &&
+      (hookAdjustedParams as Record<string, unknown>).permissionPolicy === undefined
+    ) {
+      const permissionPolicy = readPermissionPolicySnapshot()
+      if (permissionPolicy) {
+        ;(hookAdjustedParams as Record<string, unknown>).permissionPolicy = permissionPolicy
+      }
+    }
     try {
       const result = (await manager.request('agent/run', hookAdjustedParams, 60_000)) as {
         started: boolean

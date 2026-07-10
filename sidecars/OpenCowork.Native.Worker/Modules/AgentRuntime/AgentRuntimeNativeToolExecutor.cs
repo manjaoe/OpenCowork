@@ -406,12 +406,6 @@ internal static class AgentRuntimeNativeToolExecutor
 
             if (AgentRuntimePlanExecutor.IsPlanTool(call.Name))
             {
-                if (AgentRuntimeSubAgentExecutor.IsSubAgentRun(parameters))
-                {
-                    var message = AgentRuntimePlanExecutor.SubAgentPlanToolErrorMessage;
-                    return new RendererToolResult(CreateStringElement(EncodeError(message)), true, message);
-                }
-
                 var planContent = await AgentRuntimePlanExecutor.ExecuteAsync(
                     call,
                     parameters,

@@ -14,7 +14,10 @@ import {
 import {
   isProviderAvailableForModelSelection,
   useProviderStore,
-  modelSupportsVision
+  modelSupportsVision,
+  modelSupportsBuiltinSearch,
+  modelSupportsResponsesWebsocket,
+  modelSupportsResponsesImageGeneration
 } from '@renderer/stores/provider-store'
 import {
   useSettingsStore,
@@ -400,8 +403,11 @@ function ModelSettingsPopover({
   const requestType = model?.type ?? providerType
   const supportsThinking = model?.supportsThinking ?? false
   const supportsFastMode = supportsPriorityServiceTier(model)
-  const supportsResponsesWebsocket = !!model && requestType === 'openai-responses'
-  const supportsResponsesImageGeneration = !!model && requestType === 'openai-responses'
+  const supportsResponsesWebsocket = modelSupportsResponsesWebsocket(model, providerType)
+  const supportsResponsesImageGeneration = modelSupportsResponsesImageGeneration(
+    model,
+    providerType
+  )
   const supportsContextCompression = !!model
   const levels = model?.thinkingConfig?.reasoningEffortLevels
   const thinkingEnabled = useSettingsStore((s) => s.thinkingEnabled)
@@ -443,9 +449,8 @@ function ModelSettingsPopover({
   const supportsAnthropicCacheTtl = requestType === 'anthropic'
   const anthropicCacheTtl = model?.cacheTtl ?? '5m'
 
-  const supportsBuiltinSearch =
-    !!model && (requestType === 'anthropic' || requestType === 'openai-responses')
-  const builtinSearchEnabled = model?.enableBuiltinSearch === true
+  const supportsBuiltinSearch = modelSupportsBuiltinSearch(model, providerType)
+  const builtinSearchEnabled = supportsBuiltinSearch && model?.enableBuiltinSearch === true
 
   const hasConfigControls =
     supportsThinking ||

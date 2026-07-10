@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useShallow } from 'zustand/react/shallow'
@@ -888,6 +888,12 @@ function AssistantReplyRail({
 }): React.JSX.Element | null {
   const { t } = useTranslation('chat')
   const [previewMessageId, setPreviewMessageId] = React.useState<string | null>(null)
+  const [pointerPosition, setPointerPosition] = React.useState<{
+    y: number
+    railHeight: number
+  } | null>(null)
+  const pointerFrameRef = React.useRef<number | null>(null)
+  const pendingPointerPositionRef = React.useRef<typeof pointerPosition>(null)
   const dense = items.length >= ASSISTANT_RAIL_DENSE_THRESHOLD
 
   const getNearestItem = React.useCallback(
@@ -911,6 +917,24 @@ function AssistantReplyRail({
     [items]
   )
 
+  const schedulePointerPosition = React.useCallback((position: typeof pointerPosition) => {
+    pendingPointerPositionRef.current = position
+    if (pointerFrameRef.current !== null) return
+
+    pointerFrameRef.current = window.requestAnimationFrame(() => {
+      pointerFrameRef.current = null
+      setPointerPosition(pendingPointerPositionRef.current)
+    })
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      if (pointerFrameRef.current !== null) {
+        window.cancelAnimationFrame(pointerFrameRef.current)
+      }
+    }
+  }, [])
+
   if (items.length < 2) return null
 
   const previewItem = previewMessageId
@@ -921,12 +945,29 @@ function AssistantReplyRail({
   const previewTop =
     previewItemIndex >= 0 ? getCompactRailMarkerTop(previewItemIndex, items.length) : '50%'
 
-  const renderMarker = (item: AssistantReplyRailItem, previewing: boolean): React.JSX.Element => {
+  const getMarkerWaveScale = (itemIndex: number): number => {
+    if (!pointerPosition) return 1
+    const markerY =
+      pointerPosition.railHeight / 2 + getCompactRailMarkerOffsetPx(itemIndex, items.length)
+    const distance = Math.abs(markerY - pointerPosition.y)
+    const influenceRadius = Math.max(24, getCompactRailGapPx(items.length) * 4.5)
+    if (distance >= influenceRadius) return 1
+
+    const normalizedDistance = distance / influenceRadius
+    const extension = 7 * Math.exp(-4 * normalizedDistance * normalizedDistance)
+    return (12 + extension) / 12
+  }
+
+  const renderMarker = (
+    item: AssistantReplyRailItem,
+    itemIndex: number,
+    previewing: boolean
+  ): React.JSX.Element => {
     const active = activeMessageIds.has(item.id)
     return (
       <span
         className={cn(
-          'block h-0.5 w-3 rounded-full transition-colors duration-150',
+          'block h-0.5 w-3 origin-left rounded-full transition-[color,background-color,opacity,transform] duration-100 ease-out will-change-transform',
           item.kind === 'summary'
             ? 'bg-amber-500/55'
             : item.kind === 'user'
@@ -938,6 +979,7 @@ function AssistantReplyRail({
           active ? 'bg-foreground/85 opacity-100' : 'opacity-65',
           previewing && 'bg-foreground/95 opacity-100'
         )}
+        style={{ transform: `scaleX(${getMarkerWaveScale(itemIndex)})` }}
       />
     )
   }
@@ -1015,18 +1057,29 @@ function AssistantReplyRail({
 
         <div
           className={cn(
-            'absolute left-0 top-0 h-full w-6',
-            dense ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
+            'pointer-events-auto absolute left-0 top-0 h-full w-6',
+            dense && 'cursor-pointer'
           )}
-          onPointerMove={
-            dense
-              ? (event) => {
-                  const item = getNearestItem(event.clientY, event.currentTarget)
-                  setPreviewMessageId((prev) => (prev === item?.id ? prev : (item?.id ?? null)))
-                }
-              : undefined
-          }
-          onPointerLeave={dense ? () => setPreviewMessageId(null) : undefined}
+          onPointerMove={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            schedulePointerPosition({
+              y: Math.max(0, Math.min(rect.height, event.clientY - rect.top)),
+              railHeight: rect.height
+            })
+            if (dense) {
+              const item = getNearestItem(event.clientY, event.currentTarget)
+              setPreviewMessageId((prev) => (prev === item?.id ? prev : (item?.id ?? null)))
+            }
+          }}
+          onPointerLeave={() => {
+            pendingPointerPositionRef.current = null
+            if (pointerFrameRef.current !== null) {
+              window.cancelAnimationFrame(pointerFrameRef.current)
+              pointerFrameRef.current = null
+            }
+            setPointerPosition(null)
+            if (dense) setPreviewMessageId(null)
+          }}
           onClick={
             dense
               ? (event) => {
@@ -1044,7 +1097,7 @@ function AssistantReplyRail({
                 className="absolute left-0 flex h-3 w-6 -translate-y-1/2 items-center justify-start"
                 style={{ top: getCompactRailMarkerTop(itemIndex, items.length) }}
               >
-                {renderMarker(item, previewing)}
+                {renderMarker(item, itemIndex, previewing)}
               </span>
             ) : (
               <button
@@ -1066,7 +1119,7 @@ function AssistantReplyRail({
                 onBlur={() => setPreviewMessageId(null)}
                 onClick={() => onJump(item)}
               >
-                {renderMarker(item, previewing)}
+                {renderMarker(item, itemIndex, previewing)}
               </button>
             )
           })}
@@ -1436,6 +1489,11 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
   >(() => new Set())
   const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = React.useState(false)
+  // Remembers a loadedRangeStart at which an older-message load made no progress
+  // (e.g. during a running/compacting session the tail-trim immediately re-evicts
+  // the head we just loaded). Prevents the auto-loader and scroll handler from
+  // re-firing forever and leaving the "loading earlier messages" indicator stuck.
+  const stalledOlderLoadStartRef = React.useRef<number | null>(null)
   const [assistantRailMeasureVersion, setAssistantRailMeasureVersion] = React.useState(0)
   const [messageLocatorSnapshot, setMessageLocatorSnapshot] = React.useState<{
     sessionId: string | null
@@ -1874,11 +1932,23 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     const previousScrollHeight = ref?.scrollHeight ?? 0
     const previousScrollTop = ref?.scrollTop ?? 0
 
+    const startBefore = loadedRangeStart
     autoScrollModeRef.current = 'off'
     setIsLoadingOlderMessages(true)
     try {
       const loaded = await useChatStore.getState().loadOlderSessionMessages(activeSessionId)
-      if (loaded <= 0) return 0
+      // loadOlderSessionMessages reports the rows it read from the DB, but a
+      // running session's tail-trim can splice those same rows straight back off
+      // (getMessageWindowPreserveMode forces 'tail' while running). Treat "the
+      // window didn't actually grow older" as a stall so callers stop retrying.
+      const startAfter =
+        useChatStore.getState().sessions.find((s) => s.id === activeSessionId)?.loadedRangeStart ??
+        startBefore
+      if (loaded <= 0 || startAfter >= startBefore) {
+        stalledOlderLoadStartRef.current = startBefore
+        return loaded > 0 ? loaded : 0
+      }
+      stalledOlderLoadStartRef.current = null
 
       await new Promise<void>((resolve) => {
         window.requestAnimationFrame(() => {
@@ -1973,6 +2043,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       ref &&
       !isLoadingOlderMessages &&
       loadedRangeStart > 0 &&
+      stalledOlderLoadStartRef.current !== loadedRangeStart &&
       ref.scrollTop <= OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD
     ) {
       void loadOlderMessages()
@@ -2004,6 +2075,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     lastScrollOffsetRef.current = 0
     programmaticScrollUntilRef.current = 0
     measuredMessageHeightsRef.current.clear()
+    stalledOlderLoadStartRef.current = null
     setAssistantRailMeasureVersion((version) => version + 1)
     setActiveAssistantRailIds(new Set())
   }, [activeSessionId, setActiveAssistantRailIds])
@@ -2063,6 +2135,11 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
   React.useEffect(() => {
     if (!activeSessionId || isAwaitingInitialMessages || isLoadingOlderMessages) return
     if (loadedRangeStart <= 0 || renderableMessages.length >= MIN_RENDERABLE_HISTORY_ROWS) return
+    // A previous auto-load at this exact position already failed to grow the
+    // renderable window (all-hidden older page, or a running session's tail-trim
+    // undoing the load). Stop hammering — real progress moves loadedRangeStart,
+    // which re-arms this guard.
+    if (stalledOlderLoadStartRef.current === loadedRangeStart) return
     void loadOlderMessages()
   }, [
     activeSessionId,

@@ -10,9 +10,6 @@ internal static class AgentRuntimePlanExecutor
 {
     private const string PlanDirectoryName = ".plan";
     private const string IdAlphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    internal const string SubAgentPlanToolErrorMessage =
-        "Sub-agents cannot create, finalize, approve, or execute plans. " +
-        "Return planning recommendations to the parent agent in SubmitReport instead.";
 
     private static readonly HashSet<string> PlanToolNames = new(StringComparer.Ordinal)
     {
@@ -38,11 +35,6 @@ internal static class AgentRuntimePlanExecutor
         WorkerRequestContext context,
         CancellationToken cancellationToken)
     {
-        if (AgentRuntimeSubAgentExecutor.IsSubAgentRun(parameters))
-        {
-            return EncodeError(SubAgentPlanToolErrorMessage);
-        }
-
         return call.Name switch
         {
             "EnterPlanMode" => await EnterPlanModeAsync(call.Input, parameters, runId, context, cancellationToken),

@@ -81,6 +81,7 @@
     "agent": "agent",
     "teamLabel": "team",
     "taskSubAgents": "Task (Sub-Agents)",
+    "inheritsMainTools": "Same tools as main agent",
     "teamTools": "Team Tools",
     "maxIter": "max {{count}} iter"
   },

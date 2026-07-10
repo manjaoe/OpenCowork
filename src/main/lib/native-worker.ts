@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, powerMonitor } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { EventEmitter } from 'events'
@@ -21,6 +21,7 @@ const NATIVE_WORKER_RESTART_MAX_MS = 30_000
 const NATIVE_WORKER_HEARTBEAT_INTERVAL_MS = 15_000
 const NATIVE_WORKER_HEARTBEAT_TIMEOUT_MS = 5_000
 const NATIVE_WORKER_HEARTBEAT_MAX_MISSES = 2
+const NATIVE_WORKER_KILL_ESCALATION_MS = 3_000
 const FRAME_HEADER_BYTES = 4
 const MAX_FRAME_BYTES = 256 * 1024 * 1024
 const REQUIRED_NATIVE_WORKER_METHODS = [
@@ -35,6 +36,17 @@ const REQUIRED_NATIVE_WORKER_METHODS = [
 ]
 
 let nativeWorkerStartupBarrier: Promise<void> | null = null
+let nativeWorkerShutdownLatched = false
+
+/**
+ * Terminal latch for app quit. Unlike stop() — whose supervision disable is
+ * deliberately re-armed by the next ensureStarted() (macOS window-all-closed
+ * then reopen) — this permanently blocks new spawns, so a straggler request
+ * during before-quit cannot respawn a worker that nothing will ever kill.
+ */
+export function latchNativeWorkerShutdown(): void {
+  nativeWorkerShutdownLatched = true
+}
 
 /**
  * Delay the first worker spawn until process-wide startup prerequisites (notably
@@ -108,6 +120,12 @@ class NativeWorkerManager {
   private lifecycle = new EventEmitter()
   private stderrTail: string[] = []
 
+  constructor() {
+    // powerMonitor is only usable once the app is ready; the manager may be
+    // constructed earlier during module init.
+    void app.whenReady().then(() => this.installPowerMonitor())
+  }
+
   get isRunning(): boolean {
     return (
       this.child !== null &&
@@ -124,6 +142,9 @@ class NativeWorkerManager {
 
   async ensureStarted(): Promise<void> {
     if (this.isRunning) return
+    if (nativeWorkerShutdownLatched) {
+      throw new Error('Native worker is shutting down')
+    }
     const startupBarrier = nativeWorkerStartupBarrier
     if (startupBarrier) await startupBarrier
     if (this.isRunning) return
@@ -175,8 +196,15 @@ class NativeWorkerManager {
   async request<T = unknown>(
     method: string,
     params?: unknown,
-    timeoutMs = DEFAULT_NATIVE_WORKER_TIMEOUT_MS
+    timeoutMs?: number | null
   ): Promise<T> {
+    // Renderer requests arrive over MessagePack, which encodes an omitted
+    // timeout as nil -> null, bypassing a default parameter; setTimeout(cb, null)
+    // would fire at ~1ms and fail the request before the worker can answer.
+    const effectiveTimeoutMs =
+      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : DEFAULT_NATIVE_WORKER_TIMEOUT_MS
     await this.ensureStarted()
     const socket = this.socket
     if (!socket || !this.isRunning) {
@@ -194,7 +222,7 @@ class NativeWorkerManager {
       method,
       payloadBytes,
       pending: this.pending.size + 1,
-      timeoutMs
+      timeoutMs: effectiveTimeoutMs
     })
 
     return await new Promise<T>((resolve, reject) => {
@@ -208,7 +236,7 @@ class NativeWorkerManager {
           pending: this.pending.size
         })
         reject(new Error(`Native worker request timed out: ${method}`))
-      }, timeoutMs)
+      }, effectiveTimeoutMs)
 
       this.pending.set(id, {
         method,
@@ -247,6 +275,7 @@ class NativeWorkerManager {
       )
     }
 
+    sweepStaleNativeWorkerEndpoints()
     const endpoint = createNativeWorkerEndpoint()
     cleanupNativeWorkerEndpoint(endpoint)
     const childEnv = createNativeWorkerEnv()
@@ -274,6 +303,10 @@ class NativeWorkerManager {
       this.captureStderr(text)
     })
     child.on('error', (error) => {
+      // A replaced child's late events must not tear down its successor:
+      // closeWorker operates on the *current* child/socket, so without this
+      // guard a slow-dying old worker would kill the healthy replacement.
+      if (this.child !== child) return
       // A spawn/launch failure (e.g. bad binary, blocked by AV) never reaches
       // the exit handler with useful context; persist what we have.
       if (!this.stopping) {
@@ -287,11 +320,17 @@ class NativeWorkerManager {
       this.closeWorker(error)
     })
     child.on('exit', (code, signal) => {
+      const stale = this.child !== child
       // The worker's own diagnostics go to stderr, which is invisible in a
       // packaged app (no console). Persist the exit code + stderr tail so a
       // failure like a trimming/AOT crash or a missing native dep (e_sqlite3,
       // ICU) is diagnosable from ~/.open-cowork/logs instead of opaque.
-      if (!this.stopping && (code !== 0 || signal)) {
+      // Logged before the stale-child guard: on a spontaneous crash the socket
+      // EOF can reach closeWorker first and replace this.child, but the crash
+      // is still worth persisting. A stale child that died of our own
+      // SIGTERM/SIGKILL, by contrast, died as intended — not a crash.
+      const supervisorKill = stale && (signal === 'SIGTERM' || signal === 'SIGKILL')
+      if (!this.stopping && (code !== 0 || signal) && !supervisorKill) {
         writeCrashLog('native_worker_exited', {
           code,
           signal,
@@ -300,6 +339,7 @@ class NativeWorkerManager {
           stderrTail: this.stderrTail.slice(-NATIVE_WORKER_STDERR_TAIL_LINES)
         })
       }
+      if (stale) return
       this.closeWorker(
         new Error(`Native worker exited: code=${code ?? 'null'} signal=${signal ?? 'null'}`)
       )
@@ -554,6 +594,22 @@ class NativeWorkerManager {
     socket?.destroy()
     if (child && !child.killed && child.exitCode === null) {
       child.kill()
+      // SIGTERM is advisory: a worker wedged in native code (the usual reason a
+      // heartbeat recycle lands here) can ignore it and linger next to its
+      // replacement. Escalate if it has not exited shortly.
+      const killTimer = setTimeout(() => {
+        if (child.exitCode !== null || child.signalCode !== null) return
+        console.warn('[NativeWorker] worker did not exit after SIGTERM; sending SIGKILL', {
+          pid: child.pid ?? null
+        })
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          // Process already reaped.
+        }
+      }, NATIVE_WORKER_KILL_ESCALATION_MS)
+      killTimer.unref?.()
+      child.once('exit', () => clearTimeout(killTimer))
     }
     if (endpoint) {
       cleanupNativeWorkerEndpoint(endpoint)
@@ -581,6 +637,7 @@ class NativeWorkerManager {
   // from spinning; a live user request still starts immediately via
   // ensureStarted(), so this only governs the background self-heal cadence.
   private scheduleSupervisedRestart(): void {
+    if (nativeWorkerShutdownLatched) return
     if (this.autoRestartDisabled || this.stopping || this.restartTimer) return
 
     const backoff = Math.min(
@@ -653,6 +710,49 @@ class NativeWorkerManager {
       if (this.heartbeatMisses >= NATIVE_WORKER_HEARTBEAT_MAX_MISSES) {
         this.closeWorker(new Error('Native worker heartbeat failed'))
       }
+    }
+  }
+
+  private installPowerMonitor(): void {
+    powerMonitor.on('suspend', () => {
+      // Timers do not fire while the system sleeps; stop the heartbeat so a
+      // stale interval cannot count phantom misses around the sleep edge.
+      this.stopHeartbeat()
+    })
+    powerMonitor.on('resume', () => {
+      void this.handleSystemResume()
+    })
+  }
+
+  // Sleep/wake used to surface only through the 15s heartbeat (worst case
+  // ~35s of a wedged worker after wake). Probe immediately instead, and if the
+  // worker is already down skip any pending backoff so it comes back now.
+  private async handleSystemResume(): Promise<void> {
+    if (this.stopping || this.autoRestartDisabled || nativeWorkerShutdownLatched) return
+
+    if (!this.isRunning) {
+      if (!this.hasStartedOnce) return
+      this.restartAttempts = 0
+      this.clearSupervisedRestart()
+      void this.ensureStarted().catch((error) => {
+        logNativeWorkerDebug('post-resume restart failed', {
+          message: asError(error).message
+        })
+      })
+      return
+    }
+
+    this.startHeartbeat()
+    if (this.pending.size > 0) return
+    try {
+      await this.request('worker/ping', {}, NATIVE_WORKER_HEARTBEAT_TIMEOUT_MS)
+      logNativeWorkerDebug('post-resume health check ok', {})
+    } catch (error) {
+      if (!this.isRunning || this.stopping || this.autoRestartDisabled) return
+      console.warn('[NativeWorker] post-resume health check failed; recycling worker', {
+        error: asError(error).message
+      })
+      this.closeWorker(new Error('Native worker unhealthy after system resume'))
     }
   }
 
@@ -762,6 +862,49 @@ function cleanupNativeWorkerEndpoint(endpoint: string): void {
     fs.rmSync(endpoint, { force: true })
   } catch {
     // The worker also removes the Unix socket path on orderly shutdown.
+  }
+}
+
+let staleEndpointSweepDone = false
+
+// Endpoint filenames embed the owning Electron main PID. A hard-killed main
+// never runs cleanupNativeWorkerEndpoint, so its socket files linger in /tmp
+// forever; remove the ones whose owner is gone. Files only — never processes —
+// so a recycled PID can at worst keep a stale file, not lose a live one.
+function sweepStaleNativeWorkerEndpoints(): void {
+  if (process.platform === 'win32' || staleEndpointSweepDone) return
+  staleEndpointSweepDone = true
+
+  let entries: string[]
+  try {
+    entries = fs.readdirSync('/tmp')
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    const match = /^open-cowork-native-(\d+)-.+\.sock$/.exec(entry)
+    if (!match) continue
+    const ownerPid = Number.parseInt(match[1], 10)
+    if (!Number.isFinite(ownerPid) || ownerPid === process.pid || isProcessAlive(ownerPid)) {
+      continue
+    }
+    try {
+      fs.rmSync(path.join('/tmp', entry), { force: true })
+      console.log('[NativeWorker] removed stale endpoint of dead process', { entry, ownerPid })
+    } catch {
+      // Best effort; a locked file just stays behind.
+    }
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // EPERM means the pid exists but belongs to another user.
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
 

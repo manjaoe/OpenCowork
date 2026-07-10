@@ -35,12 +35,38 @@ internal sealed class AgentRuntimeOpenAIPromptCacheState
 internal static class AgentRuntimeOpenAIPromptCache
 {
     private const int PromptCacheKeyMaxLength = 64;
+    private static readonly string[] WireCacheMarkerNames =
+    [
+        "prompt_cache_key",
+        "prompt_cache_options",
+        "prompt_cache_retention",
+        "prompt_cache_breakpoint"
+    ];
+
+    // Temporarily keep cache-specific extensions off OpenAI-compatible Chat and
+    // Responses requests. Some built-in providers reject these fields outright.
+    public static bool WireCacheMarkersEnabled => false;
+
+    public static void SuppressWireCacheMarkers(HashSet<string> omitted)
+    {
+        if (WireCacheMarkersEnabled)
+        {
+            return;
+        }
+
+        foreach (var propertyName in WireCacheMarkerNames)
+        {
+            omitted.Add(propertyName);
+        }
+    }
 
     public static AgentRuntimeOpenAIPromptCacheState CreateState(
         JsonElement provider,
         bool enabledByDefault)
     {
-        var enabled = JsonHelpers.GetBool(provider, "enablePromptCache", enabledByDefault);
+        var enabled =
+            WireCacheMarkersEnabled &&
+            JsonHelpers.GetBool(provider, "enablePromptCache", enabledByDefault);
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var supportsPromptCacheOptions =
             enabled &&

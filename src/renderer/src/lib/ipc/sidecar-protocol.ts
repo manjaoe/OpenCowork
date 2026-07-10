@@ -12,6 +12,10 @@ import type { CompressionConfig } from '../agent/context-compression'
 import { resolveProviderUserAgent } from '../api/api-user-agent'
 import { summarizeToolInputForHistory } from '../tools/tool-input-sanitizer'
 import { useSettingsStore } from '@renderer/stores/settings-store'
+import {
+  toPermissionPolicySnapshot,
+  type PermissionPolicySnapshot
+} from '../../../../shared/permission-policy'
 
 export interface SidecarTextBlock {
   type: 'text'
@@ -219,6 +223,7 @@ export interface SidecarAgentRunRequest {
   sessionMode?: 'agent' | 'chat'
   planMode?: boolean
   planModeAllowedTools?: string[]
+  permissionPolicy?: PermissionPolicySnapshot
   planRevision?: SidecarPlanRevisionContext
   planExecution?: SidecarPlanExecutionContext
   slashCommand?: SidecarSlashCommandContext
@@ -613,6 +618,9 @@ export function buildSidecarAgentRunRequest(args: {
 
   const maxParallelTools = normalizeMaxParallelTools(args.maxParallelTools)
   const webSearch = mapSidecarWebSearchConfig(args.tools)
+  // Global settings snapshot, applied to every run this module builds (incl. sub-agents,
+  // which inherit the parent's parameters in the native worker).
+  const permissionPolicy = toPermissionPolicySnapshot(useSettingsStore.getState().permissionPolicy)
   const imagePluginProvider = args.imagePluginProvider
     ? mapSidecarProvider(args.imagePluginProvider)
     : null
@@ -649,6 +657,7 @@ export function buildSidecarAgentRunRequest(args: {
     ...(args.planModeAllowedTools && args.planModeAllowedTools.length > 0
       ? { planModeAllowedTools: [...args.planModeAllowedTools] }
       : {}),
+    ...(permissionPolicy ? { permissionPolicy } : {}),
     ...(planRevision ? { planRevision } : {}),
     ...(planExecution ? { planExecution } : {}),
     ...(slashCommand ? { slashCommand } : {}),

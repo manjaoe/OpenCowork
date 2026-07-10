@@ -12,7 +12,10 @@ import type {
 import { builtinProviderPresets } from './providers'
 import type { BuiltinProviderPreset } from './providers'
 import { resolveCopilotApiBaseUrl, resolveCopilotModelId } from '../lib/auth/copilot'
-import { normalizeResponsesImageGenerationConfig } from '../lib/api/responses-image-generation'
+import {
+  isResponsesImageGenerationEnabled,
+  normalizeResponsesImageGenerationConfig
+} from '../lib/api/responses-image-generation'
 import { resolveProviderUserAgent } from '../lib/api/api-user-agent'
 import { aiProviderStorage } from '../lib/ipc/ai-provider-storage'
 import { useSettingsStore } from './settings-store'
@@ -398,13 +401,18 @@ export function isModelComputerUseEnabled(
 // Providers whose native/server-side web search we can inject. Anthropic exposes
 // the `web_search_20250305` server tool; the OpenAI Responses API exposes the
 // `web_search` tool. Other protocols (openai-chat, gemini, images) have no
-// drop-in equivalent, so the toggle is inert there.
+// drop-in equivalent. Speaking the protocol is not enough — many relay endpoints
+// don't ship the server tool — so support is an explicit per-model opt-in.
 export function modelSupportsBuiltinSearch(
   model: AIModelConfig | null | undefined,
   providerType?: ProviderType
 ): boolean {
-  const requestType = model?.type ?? providerType
-  return requestType === 'anthropic' || requestType === 'openai-responses'
+  if (!model) return false
+  const requestType = model.type ?? providerType
+  return (
+    (requestType === 'anthropic' || requestType === 'openai-responses') &&
+    model.supportsBuiltinSearch === true
+  )
 }
 
 export function isModelBuiltinSearchEnabled(
@@ -412,6 +420,43 @@ export function isModelBuiltinSearchEnabled(
   providerType?: ProviderType
 ): boolean {
   return modelSupportsBuiltinSearch(model, providerType) && model?.enableBuiltinSearch === true
+}
+
+export function modelSupportsResponsesWebsocket(
+  model: AIModelConfig | null | undefined,
+  providerType?: ProviderType
+): boolean {
+  if (!model) return false
+  const requestType = model.type ?? providerType
+  return requestType === 'openai-responses' && model.supportsWebsocket === true
+}
+
+export function modelSupportsResponsesImageGeneration(
+  model: AIModelConfig | null | undefined,
+  providerType?: ProviderType
+): boolean {
+  if (!model) return false
+  const requestType = model.type ?? providerType
+  return requestType === 'openai-responses' && model.supportsImageGeneration === true
+}
+
+/**
+ * Resolve the effective `image_generation` tool config for a request. Always returns an
+ * explicit `enabled` flag for Responses models — the runtime treats a missing config as
+ * enabled, so unsupported models must send `enabled: false` rather than nothing.
+ */
+export function resolveModelResponsesImageGeneration(
+  model: AIModelConfig | null | undefined,
+  providerType?: ProviderType
+): ProviderConfig['responsesImageGeneration'] {
+  const requestType = model?.type ?? providerType
+  if (requestType !== 'openai-responses') return undefined
+  return {
+    ...normalizeResponsesImageGenerationConfig(model?.responsesImageGeneration),
+    enabled:
+      modelSupportsResponsesImageGeneration(model, providerType) &&
+      isResponsesImageGenerationEnabled(model?.responsesImageGeneration)
+  }
 }
 
 export function normalizeProviderBaseUrl(
@@ -512,6 +557,22 @@ function resolveServiceTier(
 function resolveProviderAccountId(provider: AIProvider): string | undefined {
   const accountId = provider.oauth?.accountId?.trim()
   return accountId ? accountId : undefined
+}
+
+function resolveResponsesWebsocket(
+  model: AIModelConfig | null | undefined,
+  provider: AIProvider,
+  requestType: ProviderType
+): Pick<ProviderConfig, 'websocketUrl' | 'websocketMode'> {
+  if (requestType !== 'openai-responses') return {}
+  if (!modelSupportsResponsesWebsocket(model, requestType)) {
+    // Explicit 'disabled' so a provider-level default can't re-enable the transport downstream.
+    return { websocketMode: 'disabled' }
+  }
+  return {
+    websocketUrl: model?.websocketUrl ?? provider.websocketUrl,
+    websocketMode: model?.websocketMode ?? provider.websocketMode
+  }
 }
 
 function mergeBuiltinModels(
@@ -1313,14 +1374,17 @@ export const useProviderStore = create<ProviderStore>()(
           activeModel?.requestOverrides,
           activeModel?.id ?? activeModelId
         )
-        const websocketUrl = activeModel?.websocketUrl ?? provider.websocketUrl
-        const websocketMode = activeModel?.websocketMode ?? provider.websocketMode
+        const { websocketUrl, websocketMode } = resolveResponsesWebsocket(
+          activeModel,
+          provider,
+          requestType
+        )
         const serviceTier = resolveServiceTier(activeModel, provider.builtinId)
         const accountId = resolveProviderAccountId(provider)
-        const responsesImageGeneration =
-          requestType === 'openai-responses'
-            ? normalizeResponsesImageGenerationConfig(activeModel?.responsesImageGeneration)
-            : undefined
+        const responsesImageGeneration = resolveModelResponsesImageGeneration(
+          activeModel,
+          requestType
+        )
         return {
           type: requestType,
           apiKey: provider.apiKey,
@@ -1434,14 +1498,14 @@ export const useProviderStore = create<ProviderStore>()(
           model?.requestOverrides,
           model?.id ?? resolvedModelId
         )
-        const websocketUrl = model?.websocketUrl ?? provider.websocketUrl
-        const websocketMode = model?.websocketMode ?? provider.websocketMode
+        const { websocketUrl, websocketMode } = resolveResponsesWebsocket(
+          model,
+          provider,
+          requestType
+        )
         const serviceTier = resolveServiceTier(model, provider.builtinId)
         const accountId = resolveProviderAccountId(provider)
-        const responsesImageGeneration =
-          requestType === 'openai-responses'
-            ? normalizeResponsesImageGenerationConfig(model?.responsesImageGeneration)
-            : undefined
+        const responsesImageGeneration = resolveModelResponsesImageGeneration(model, requestType)
         return {
           type: requestType,
           apiKey: provider.apiKey,
@@ -1537,14 +1601,17 @@ export const useProviderStore = create<ProviderStore>()(
           fastModel?.requestOverrides,
           fastModel?.id ?? model
         )
-        const websocketUrl = fastModel?.websocketUrl ?? provider.websocketUrl
-        const websocketMode = fastModel?.websocketMode ?? provider.websocketMode
+        const { websocketUrl, websocketMode } = resolveResponsesWebsocket(
+          fastModel,
+          provider,
+          requestType
+        )
         const serviceTier = resolveServiceTier(fastModel, provider.builtinId)
         const accountId = resolveProviderAccountId(provider)
-        const responsesImageGeneration =
-          requestType === 'openai-responses'
-            ? normalizeResponsesImageGenerationConfig(fastModel?.responsesImageGeneration)
-            : undefined
+        const responsesImageGeneration = resolveModelResponsesImageGeneration(
+          fastModel,
+          requestType
+        )
         return {
           type: requestType,
           apiKey: provider.apiKey,

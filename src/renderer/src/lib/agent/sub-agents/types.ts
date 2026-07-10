@@ -22,9 +22,9 @@ export interface SubAgentDefinition {
   icon?: string
   /** Focused system prompt for this SubAgent */
   systemPrompt: string
-  /** Allowed tool names. Supports '*' to expose all currently registered tools. */
+  /** Legacy catalog metadata. Runtime tools are inherited from the parent agent. */
   tools: string[]
-  /** Tools explicitly denied for this SubAgent even when tools='*'. */
+  /** Legacy catalog metadata retained for compatibility; not enforced at runtime. */
   disallowedTools: string[]
   /** Max LLM turns before forced stop. Non-positive values fall back to a safety cap. */
   maxTurns: number

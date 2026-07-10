@@ -239,7 +239,7 @@ export function buildChatModeSystemPrompt(options: ChatModePromptOptions): strin
       '## Mode: Plan (ACTIVE)',
       '**You are currently in Plan Mode.** Explore the codebase and produce a detailed implementation plan, not implementation code.',
       '- Prioritize read/search tools to understand the codebase. Write operations are allowed when the planning work needs them, but the plan file is the deliverable.',
-      '- Use Task only for investigation. The lead agent must write the plan file and call ExitPlanMode itself; sub-agents cannot create or finalize plans.',
+      '- Sub-agents inherit the same tools exposed to this run. When delegating planning work, give one agent clear ownership of the plan file and avoid concurrent edits.',
       '- Write the plan into the current plan file using Write/Edit.',
       '- The plan must include scope, requirements, acceptance criteria, design direction, file-level implementation steps, validation, assumptions, risks, and out-of-scope items.',
       '- After the plan file is ready, call ExitPlanMode in the same turn. A plan is not complete until ExitPlanMode succeeds.',

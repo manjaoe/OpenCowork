@@ -5,6 +5,12 @@ using System.Text.Json;
 
 internal sealed class LocalIpcWorkerServer
 {
+    // The Electron supervisor never reconnects to an existing worker: every
+    // (re)start spawns a fresh process with a fresh endpoint. Exiting once the
+    // sole client disconnects (or never shows up) keeps a crashed or SIGKILLed
+    // parent from leaking an orphaned worker that idles forever with no owner.
+    private static readonly TimeSpan FirstClientAcceptTimeout = TimeSpan.FromMinutes(2);
+
     private readonly WorkerDispatcher dispatcher;
     private readonly WorkerEndpoint endpoint;
 
@@ -31,7 +37,7 @@ internal sealed class LocalIpcWorkerServer
             $"server listening transport=named-pipe debug={WorkerLog.DebugEnabled} " +
             $"slowRequestMs={WorkerLog.SlowRequestMs}");
 
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
             await using var pipe = new NamedPipeServerStream(
                 pipeName,
@@ -40,10 +46,30 @@ internal sealed class LocalIpcWorkerServer
                 PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous);
 
-            await pipe.WaitForConnectionAsync(cancellationToken);
+            using var acceptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            acceptCts.CancelAfter(FirstClientAcceptTimeout);
+            try
+            {
+                await pipe.WaitForConnectionAsync(acceptCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                WorkerLog.Warn("no client connected before the accept deadline; exiting");
+                return;
+            }
+
             WorkerLog.Debug("client connected transport=named-pipe");
-            await HandleClientAsync(pipe, cancellationToken);
-            WorkerLog.Debug("client disconnected transport=named-pipe");
+            var sawTraffic = await HandleClientAsync(pipe, cancellationToken);
+            if (sawTraffic)
+            {
+                WorkerLog.Info("client disconnected transport=named-pipe; exiting so the supervisor owns respawn");
+                return;
+            }
+
+            // The supervisor's connect-retry can abandon an OS-established
+            // connection before sending anything; only a client that spoke is
+            // treated as the sole owner whose disconnect ends this process.
+            WorkerLog.Debug("client disconnected before any frame transport=named-pipe; awaiting replacement");
         }
     }
 
@@ -60,13 +86,39 @@ internal sealed class LocalIpcWorkerServer
 
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (true)
             {
-                using var client = await listener.AcceptAsync(cancellationToken);
+                using var acceptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                acceptCts.CancelAfter(FirstClientAcceptTimeout);
+                Socket client;
+                try
+                {
+                    client = await listener.AcceptAsync(acceptCts.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    WorkerLog.Warn("no client connected before the accept deadline; exiting");
+                    return;
+                }
+
                 WorkerLog.Debug("client connected transport=unix-domain-socket");
-                await using var stream = new NetworkStream(client, ownsSocket: true);
-                await HandleClientAsync(stream, cancellationToken);
-                WorkerLog.Debug("client disconnected transport=unix-domain-socket");
+                bool sawTraffic;
+                using (client)
+                {
+                    await using var stream = new NetworkStream(client, ownsSocket: true);
+                    sawTraffic = await HandleClientAsync(stream, cancellationToken);
+                }
+
+                if (sawTraffic)
+                {
+                    WorkerLog.Info("client disconnected transport=unix-domain-socket; exiting so the supervisor owns respawn");
+                    return;
+                }
+
+                // The supervisor's connect-retry can abandon an OS-established
+                // connection before sending anything; only a client that spoke is
+                // treated as the sole owner whose disconnect ends this process.
+                WorkerLog.Debug("client disconnected before any frame transport=unix-domain-socket; awaiting replacement");
             }
         }
         finally
@@ -75,11 +127,12 @@ internal sealed class LocalIpcWorkerServer
         }
     }
 
-    private async Task HandleClientAsync(Stream stream, CancellationToken cancellationToken)
+    private async Task<bool> HandleClientAsync(Stream stream, CancellationToken cancellationToken)
     {
         using var clientCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var writeLock = new SemaphoreSlim(1, 1);
         var dispatchTasks = new List<Task>();
+        var sawTraffic = false;
 
         try
         {
@@ -91,6 +144,7 @@ internal sealed class LocalIpcWorkerServer
                     break;
                 }
 
+                sawTraffic = true;
                 var task = HandleFrameAsync(stream, writeLock, frame, clientCts.Token);
                 dispatchTasks.Add(task);
                 dispatchTasks.RemoveAll(static item => item.IsCompleted);
@@ -108,6 +162,8 @@ internal sealed class LocalIpcWorkerServer
                 WorkerLog.Warn($"request task stopped after client disconnect error={ex.GetType().Name}: {ex.Message}");
             }
         }
+
+        return sawTraffic;
     }
 
     private async Task HandleFrameAsync(

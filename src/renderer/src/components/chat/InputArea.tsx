@@ -39,6 +39,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { Textarea } from '@renderer/components/ui/textarea'
@@ -1605,6 +1606,7 @@ export function InputArea({
   const currentLanguage = useSettingsStore((state) => state.language)
   const mainModelSelectionMode = useSettingsStore((state) => state.mainModelSelectionMode)
   const autoApprove = useSettingsStore((state) => state.autoApprove)
+  const permissionWhitelistEnabled = useSettingsStore((state) => state.permissionPolicy.enabled)
   const clarifyAutoAcceptRecommended = useSettingsStore(
     (state) => state.clarifyAutoAcceptRecommended
   )
@@ -3688,9 +3690,17 @@ export function InputArea({
     </Tooltip>
   )
 
-  const handleSelectPermissionMode = async (fullAccess: boolean): Promise<void> => {
-    if (fullAccess === autoApprove) return
-    if (fullAccess) {
+  const permissionMode: 'default' | 'whitelist' | 'fullAccess' = autoApprove
+    ? 'fullAccess'
+    : permissionWhitelistEnabled
+      ? 'whitelist'
+      : 'default'
+
+  const handleSelectPermissionMode = async (
+    mode: 'default' | 'whitelist' | 'fullAccess'
+  ): Promise<void> => {
+    if (mode === permissionMode) return
+    if (mode === 'fullAccess') {
       const ok = await confirm({
         title: t('permission.fullAccessConfirmTitle'),
         description: t('permission.fullAccessConfirmDesc'),
@@ -3698,8 +3708,14 @@ export function InputArea({
         variant: 'destructive'
       })
       if (!ok) return
+      useSettingsStore.getState().updateSettings({ autoApprove: true })
+      return
     }
-    useSettingsStore.getState().updateSettings({ autoApprove: fullAccess })
+    const { permissionPolicy } = useSettingsStore.getState()
+    useSettingsStore.getState().updateSettings({
+      autoApprove: false,
+      permissionPolicy: { ...permissionPolicy, enabled: mode === 'whitelist' }
+    })
   }
 
   const permissionControl = (
@@ -3714,17 +3730,22 @@ export function InputArea({
               className={cn(
                 composerIconControlClass,
                 'gap-1.5 px-2 text-xs font-medium',
-                autoApprove && 'text-amber-600 dark:text-amber-400'
+                permissionMode === 'fullAccess' && 'text-amber-600 dark:text-amber-400',
+                permissionMode === 'whitelist' && 'text-emerald-600 dark:text-emerald-400'
               )}
               aria-label={t('permission.label')}
             >
-              {autoApprove ? (
+              {permissionMode === 'fullAccess' ? (
                 <ShieldAlert className="size-3.5" />
               ) : (
                 <ShieldCheck className="size-3.5" />
               )}
               <span className="max-w-24 truncate">
-                {autoApprove ? t('permission.fullAccess') : t('permission.default')}
+                {permissionMode === 'fullAccess'
+                  ? t('permission.fullAccess')
+                  : permissionMode === 'whitelist'
+                    ? t('permission.whitelist')
+                    : t('permission.default')}
               </span>
             </Button>
           </DropdownMenuTrigger>
@@ -3734,12 +3755,12 @@ export function InputArea({
       <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuItem
           className="flex-col items-start gap-0.5"
-          onSelect={() => void handleSelectPermissionMode(false)}
+          onSelect={() => void handleSelectPermissionMode('default')}
         >
           <div className="flex w-full items-center gap-2">
             <ShieldCheck className="size-3.5" />
             <span className="flex-1 font-medium">{t('permission.default')}</span>
-            {!autoApprove && <Check className="size-3.5" />}
+            {permissionMode === 'default' && <Check className="size-3.5" />}
           </div>
           <span className="pl-[1.375rem] text-xs text-muted-foreground">
             {t('permission.defaultDesc')}
@@ -3747,16 +3768,33 @@ export function InputArea({
         </DropdownMenuItem>
         <DropdownMenuItem
           className="flex-col items-start gap-0.5"
-          onSelect={() => void handleSelectPermissionMode(true)}
+          onSelect={() => void handleSelectPermissionMode('whitelist')}
+        >
+          <div className="flex w-full items-center gap-2">
+            <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="flex-1 font-medium">{t('permission.whitelist')}</span>
+            {permissionMode === 'whitelist' && <Check className="size-3.5" />}
+          </div>
+          <span className="pl-[1.375rem] text-xs text-muted-foreground">
+            {t('permission.whitelistDesc')}
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="flex-col items-start gap-0.5"
+          onSelect={() => void handleSelectPermissionMode('fullAccess')}
         >
           <div className="flex w-full items-center gap-2">
             <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
             <span className="flex-1 font-medium">{t('permission.fullAccess')}</span>
-            {autoApprove && <Check className="size-3.5" />}
+            {permissionMode === 'fullAccess' && <Check className="size-3.5" />}
           </div>
           <span className="pl-[1.375rem] text-xs text-muted-foreground">
             {t('permission.fullAccessDesc')}
           </span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => openSettingsPage('permission')}>
+          <span className="text-xs">{t('permission.manageWhitelist')}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

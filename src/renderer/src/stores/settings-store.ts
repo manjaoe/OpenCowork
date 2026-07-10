@@ -23,6 +23,11 @@ import {
   normalizeLanguageCode,
   type AppLanguage
 } from '@renderer/lib/i18n-language'
+import {
+  DEFAULT_PERMISSION_POLICY,
+  sanitizePermissionPolicy,
+  type PermissionPolicy
+} from '../../../shared/permission-policy'
 
 export interface ModelBinding {
   providerId: string
@@ -352,6 +357,7 @@ interface SettingsStore {
   sshTerminalThemePreset: SshTerminalThemePreset
   language: AppLanguage
   autoApprove: boolean
+  permissionPolicy: PermissionPolicy
   autoUpdateEnabled: boolean
   clarifyAutoAcceptRecommended: boolean
   clarifyPlanModeAutoSwitchTarget: ClarifyPlanModeAutoSwitchTarget
@@ -470,6 +476,7 @@ export const useSettingsStore = create<SettingsStore>()(
       sshTerminalThemePreset: DEFAULT_SSH_TERMINAL_THEME_PRESET,
       language: detectSystemLanguage(),
       autoApprove: false,
+      permissionPolicy: { ...DEFAULT_PERMISSION_POLICY },
       autoUpdateEnabled: true,
       clarifyAutoAcceptRecommended: false,
       clarifyPlanModeAutoSwitchTarget: 'off',
@@ -590,7 +597,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'opencowork-settings',
-      version: 28,
+      version: 29,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>
@@ -655,6 +662,7 @@ export const useSettingsStore = create<SettingsStore>()(
         }
         state.claudeCodeConfigs = sanitizeClaudeCodeConfigs(state.claudeCodeConfigs)
         state.codexConfigs = sanitizeCodexConfigs(state.codexConfigs)
+        state.permissionPolicy = sanitizePermissionPolicy(state.permissionPolicy)
         if (state.projectDefaultDirectoryMode === undefined) {
           state.projectDefaultDirectoryMode = 'last-used'
         }
@@ -867,6 +875,7 @@ export const useSettingsStore = create<SettingsStore>()(
         sshTerminalThemePreset: state.sshTerminalThemePreset,
         language: state.language,
         autoApprove: state.autoApprove,
+        permissionPolicy: state.permissionPolicy,
         autoUpdateEnabled: state.autoUpdateEnabled,
         clarifyAutoAcceptRecommended: state.clarifyAutoAcceptRecommended,
         clarifyPlanModeAutoSwitchTarget: state.clarifyPlanModeAutoSwitchTarget,

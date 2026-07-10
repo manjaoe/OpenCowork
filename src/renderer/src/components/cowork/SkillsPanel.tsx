@@ -172,14 +172,9 @@ export function SkillsPanel(): React.JSX.Element {
                 </div>
                 <p className="text-[10px] text-muted-foreground line-clamp-2">{sa.description}</p>
                 <div className="mt-0.5 flex flex-wrap gap-0.5">
-                  {sa.tools.map((t) => (
-                    <span
-                      key={t}
-                      className="rounded bg-violet-500/5 px-1 py-px text-[9px] font-mono text-violet-400/60"
-                    >
-                      {t}
-                    </span>
-                  ))}
+                  <span className="rounded bg-violet-500/5 px-1 py-px text-[9px] text-violet-400/60">
+                    {t('skills.inheritsMainTools')}
+                  </span>
                 </div>
               </li>
             ))}

@@ -81,6 +81,7 @@
     "agent": "代理",
     "teamLabel": "团队",
     "taskSubAgents": "Task（子代理）",
+    "inheritsMainTools": "与主代理工具相同",
     "teamTools": "团队工具",
     "maxIter": "最多 {{count}} 次迭代"
   },

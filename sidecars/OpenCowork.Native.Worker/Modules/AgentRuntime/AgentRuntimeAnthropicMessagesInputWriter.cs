@@ -854,6 +854,8 @@ internal static partial class AgentRuntimeAnthropicMessagesProvider
 
         var selected = JsonHelpers.GetString(provider, "reasoningEffort") ??
             JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort");
+        // "ultra" is a pseudo-tier mapped to the model's top real level before matching.
+        selected = JsonHelpers.ResolveEffectiveReasoningEffort(selected, thinkingConfig);
         if (!string.IsNullOrWhiteSpace(selected) &&
             levels.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String && item.GetString() == selected))
         {

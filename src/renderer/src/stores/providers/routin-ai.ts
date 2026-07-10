@@ -2,7 +2,8 @@ import type { BuiltinProviderPreset } from './types'
 
 export const routinAiPreset: BuiltinProviderPreset = {
   builtinId: 'routin-ai',
-  version: 1,
+  // v2: gpt-5.4+ models support the Responses WebSocket transport (supportsWebsocket)
+  version: 2,
   name: 'Routin AI',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.routin.ai/v1',
@@ -555,6 +556,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       contextLength: 400_000, // 400k
       maxOutputTokens: 128_000,
       supportsVision: true,
@@ -579,6 +581,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       contextLength: 400_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
@@ -603,6 +606,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       contextLength: 268_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
@@ -627,6 +631,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       contextLength: 268_000,
       maxOutputTokens: 128_000,
       supportsVision: true,
@@ -651,6 +656,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       // Synced with Codex's model catalog: 400K total window − 128K reserved output.
       contextLength: 372_000,
       maxOutputTokens: 128_000,
@@ -677,6 +683,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       // Synced with Codex's model catalog: 400K total window − 128K reserved output.
       contextLength: 372_000,
       maxOutputTokens: 128_000,
@@ -705,6 +712,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
       icon: 'openai',
       enabled: true,
       serviceTier: 'priority',
+      supportsWebsocket: true,
       // Synced with Codex's model catalog: 400K total window − 128K reserved output.
       contextLength: 372_000,
       maxOutputTokens: 128_000,
@@ -1693,7 +1701,8 @@ const routinAiModelById = new Map(routinAiPreset.defaultModels.map((m) => [m.id,
 
 export const routinAiPlanPreset: BuiltinProviderPreset = {
   builtinId: 'routin-ai-plan',
-  version: 1,
+  // v2: gpt-5.4+ models support the Responses WebSocket transport (supportsWebsocket)
+  version: 2,
   name: 'Routin AI（套餐）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.routin.ai/plan/v1',

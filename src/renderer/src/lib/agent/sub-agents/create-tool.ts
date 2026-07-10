@@ -3,7 +3,6 @@ import { encodeStructuredToolResult } from '../../tools/tool-result-format'
 import type { ToolHandler } from '../../tools/tool-types'
 import { subAgentRegistry } from './registry'
 import type { SubAgentDefinition } from './types'
-import { getEffectiveSubAgentDisallowedTools } from './resolve-tools'
 
 export interface SubAgentMeta {
   iterations: number
@@ -55,28 +54,18 @@ function nativeOnlyTaskResult(): string {
   })
 }
 
-function formatAgentToolScope(agent: SubAgentDefinition): string {
-  const tools = agent.tools ?? []
-  if (tools.length === 0) return 'Read, Glob, Grep, LS, Skill'
-  const denied = getEffectiveSubAgentDisallowedTools(agent.disallowedTools ?? [])
-  if (tools.includes('*')) {
-    return denied.length > 0 ? `All tools except ${denied.join(', ')}` : '*'
-  }
-  return tools.filter((tool) => !denied.includes(tool)).join(', ')
-}
-
 function buildTaskDescription(agents: SubAgentDefinition[]): string {
   const agentLines = agents
-    .map((a) => `- ${a.name}: ${a.description} (Tools: ${formatAgentToolScope(a)})`)
+    .map((a) => `- ${a.name}: ${a.description} (Tools: same as parent agent)`)
     .join('\n')
 
   return `Launch a new agent to handle complex, multi-step tasks autonomously.
 
-The Task tool launches specialized agents (sub-agents) that autonomously handle complex tasks. Each agent type has its own focused system prompt and tool allowlist.
+The Task tool launches specialized agents (sub-agents) that autonomously handle complex tasks. Each agent type has its own focused system prompt and inherits the complete tool set exposed to the parent agent for the current run.
 
 Available agent types and the tools they have access to:
 ${agentLines}
-- custom: General-purpose sub-agent with a built-in default system prompt and broad tool access except Task, AskUserQuestion, and plan-mode tools (EnterPlanMode/ExitPlanMode). Use this when none of the specialized agents above are a clean fit. You only supply the task via "prompt" - do NOT try to pass a system prompt, tools list, or permissions; those are fixed by the runtime. (Tools: All tools except Task, AskUserQuestion, EnterPlanMode, ExitPlanMode)
+- custom: General-purpose sub-agent with a built-in default system prompt and the same tools as the parent agent. Use this when none of the specialized agents above are a clean fit. You only supply the task via "prompt" - tool access is inherited automatically. (Tools: same as parent agent)
 
 When using the Task tool, you MUST specify a "subagent_type" parameter to select which agent type to use.
 
@@ -91,6 +80,7 @@ Usage notes:
 - Launch multiple agents concurrently whenever possible, to maximize performance. To do that, send a single assistant message containing multiple Task tool_use blocks.
 - When the sub-agent is done, it will return a single message back to you. The result is not visible to the user - you must send a concise text summary back to the user after the agent returns.
 - Each sub-agent invocation is stateless: it does not see the current conversation history, so write self-contained prompts that include all context the sub-agent needs.
+- Sub-agents inherit the parent's current tools, including Task when it is available, so they may delegate further when useful.
 - Clearly tell the sub-agent whether you expect it to write code or just do research (search, file reads, web fetches), since it does not see the user's intent.
 - The sub-agent's outputs should generally be trusted.
 - If a sub-agent's description says it should be used proactively for its domain, prefer launching it without waiting for the user to ask.
@@ -143,7 +133,7 @@ export function createTaskTool(_providerGetter: () => ProviderConfig): ToolHandl
                 type: 'string',
                 enum: subTypeEnum,
                 description:
-                  'The type of specialized agent to use for this task. Use "custom" for a general-purpose sub-agent with broad tool access except Task, AskUserQuestion, and plan-mode tools (EnterPlanMode/ExitPlanMode) and a built-in default system prompt - you only supply the task via "prompt".'
+                  'The type of specialized agent to use for this task. Every sub-agent inherits the tools exposed to the parent agent for the current run. Use "custom" for a general-purpose sub-agent with a built-in default system prompt.'
               },
               model: {
                 type: 'string',
@@ -186,7 +176,7 @@ export function createTaskTool(_providerGetter: () => ProviderConfig): ToolHandl
                 type: 'string',
                 enum: subTypeEnum,
                 description:
-                  'Optional specialized background agent type to use for this teammate. Use "custom" for a general-purpose teammate with broad tool access except Task, AskUserQuestion, and plan-mode tools (EnterPlanMode/ExitPlanMode).'
+                  'Optional specialized background agent type to use for this teammate. Every teammate inherits the tools exposed to the parent agent for the current run.'
               },
               model: {
                 type: 'string',

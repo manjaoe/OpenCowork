@@ -34,7 +34,6 @@ Use this structure:
 name: your-agent-name
 description: Short, specific description of what the agent does.
 icon: lucide-icon-name
-allowedTools: Read, Write, Edit, Glob, Grep, LS, Bash, AskUserQuestion
 maxIterations: 0
 ---
 
@@ -46,7 +45,6 @@ The frontmatter must explicitly include all of these fields:
 - `name`
 - `description`
 - `icon`
-- `allowedTools`
 - `maxIterations`
 
 Default field rules
@@ -54,8 +52,11 @@ Default field rules
 - `name`: kebab-case
 - `description`: concise and specific
 - `icon`: choose the most suitable Lucide icon name
-- `allowedTools`: `Read, Write, Edit, Glob, Grep, LS, Bash, AskUserQuestion`
 - `maxIterations`: `0` unless there is a clear reason to set a limit
+
+Sub-agents automatically inherit the complete tool set available to the parent agent for the
+current run. Do not add `allowedTools` or `disallowedTools` to restrict a sub-agent; legacy fields
+are accepted for compatibility but are not enforced.
 
 Body requirements
 

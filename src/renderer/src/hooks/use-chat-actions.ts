@@ -8,9 +8,14 @@ import {
   resolveReasoningEffortForModel,
   useSettingsStore
 } from '@renderer/stores/settings-store'
-import { modelSupportsVision, useProviderStore } from '@renderer/stores/provider-store'
+import {
+  modelSupportsVision,
+  resolveModelResponsesImageGeneration,
+  useProviderStore
+} from '@renderer/stores/provider-store'
 import { ensureProviderAuthReady } from '@renderer/lib/auth/provider-auth'
 import { useAgentStore } from '@renderer/stores/agent-store'
+import { evaluateToolPermission } from '../../../shared/permission-policy'
 import { useBackgroundSessionStore } from '@renderer/stores/background-session-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSshStore } from '@renderer/stores/ssh-store'
@@ -27,6 +32,7 @@ import {
 } from '@renderer/lib/tools/tool-result-format'
 import {
   buildSystemPrompt,
+  MULTI_AGENT_MODE_PROMPT,
   resolvePromptEnvironmentContext
 } from '@renderer/lib/agent/system-prompt'
 import {
@@ -277,9 +283,32 @@ async function handleSidecarApprovalRequest(payload: SidecarApprovalIpcPayload):
   }
 
   const agentStore = useAgentStore.getState()
-  const autoApprove = useSettingsStore.getState().autoApprove
-  if (autoApprove || agentStore.approvedToolNames.includes(request.toolCall.name)) {
-    if (!autoApprove) {
+  const settingsState = useSettingsStore.getState()
+  // Mirror of the sidecar-side permission policy — covers requests raced against a mid-run
+  // policy edit (the sidecar snapshot is taken at run start). Deny beats autoApprove.
+  const policyDecision = evaluateToolPermission(
+    request.toolCall.name,
+    request.toolCall.input,
+    settingsState.permissionPolicy
+  )
+  if (policyDecision.decision === 'deny') {
+    await sendSidecarApprovalResponse({
+      requestId: payload.requestId,
+      approved: false,
+      reason:
+        "Blocked by the user's command blacklist " +
+        `(rule: ${policyDecision.rule.pattern}). Do not retry this command.`
+    })
+    return
+  }
+  const autoApprove = settingsState.autoApprove
+  if (
+    autoApprove ||
+    policyDecision.decision === 'allow' ||
+    agentStore.approvedToolNames.includes(request.toolCall.name)
+  ) {
+    // Policy-based allows stay scoped to their rule — do not session-whitelist the tool.
+    if (!autoApprove && policyDecision.decision !== 'allow') {
       agentStore.addApprovedTool(request.toolCall.name)
     }
     await sendSidecarApprovalResponse({
@@ -1705,8 +1734,9 @@ async function buildProviderConfigWithRuntimeSettings(
     thinkingConfig: resolvedThinkingConfig,
     reasoningEffort,
     responseSummary: modelConfig?.responseSummary ?? providerConfig.responseSummary,
-    responsesImageGeneration:
-      modelConfig?.responsesImageGeneration ?? providerConfig.responsesImageGeneration,
+    responsesImageGeneration: modelConfig
+      ? resolveModelResponsesImageGeneration(modelConfig, providerConfig.type)
+      : providerConfig.responsesImageGeneration,
     enablePromptCache: modelConfig?.enablePromptCache ?? providerConfig.enablePromptCache,
     enableSystemPromptCache:
       modelConfig?.enableSystemPromptCache ?? providerConfig.enableSystemPromptCache,
@@ -4699,6 +4729,18 @@ export function useChatActions(): {
             })
           }
 
+          // "Ultra" reasoning is a pseudo-tier: the sidecar caps the actual effort at the
+          // model's top real level, and its only extra effect is authorizing aggressive
+          // multi-agent work via this block. Appended per-send (not baked into the cached
+          // prompt snapshot) so toggling ultra takes effect immediately without desyncing
+          // the ultra-independent snapshot.
+          const multiAgentMode =
+            baseProviderConfig.thinkingEnabled === true &&
+            baseProviderConfig.reasoningEffort === 'ultra'
+          if (multiAgentMode) {
+            agentSystemPrompt = `${agentSystemPrompt}\n\n${MULTI_AGENT_MODE_PROMPT}`
+          }
+
           const agentProviderConfig = withResponsesSessionScope(
             {
               ...baseProviderConfig,
@@ -5457,10 +5499,17 @@ export function useChatActions(): {
 
                 case 'tool_call_approval_needed': {
                   liveToolNames.set(event.toolCall.id, event.toolCall.name)
-                  // Skip adding to pendingToolCalls when auto-approve is active —
-                  // the callback will return true immediately, so no dialog needed.
+                  // Skip adding to pendingToolCalls when the approval handler will resolve
+                  // without a dialog (auto-approve, permission policy allow/deny, or a
+                  // session-approved tool) — no dialog needed either way.
+                  const approvalSettings = useSettingsStore.getState()
                   const willAutoApprove =
-                    useSettingsStore.getState().autoApprove ||
+                    approvalSettings.autoApprove ||
+                    evaluateToolPermission(
+                      event.toolCall.name,
+                      event.toolCall.input,
+                      approvalSettings.permissionPolicy
+                    ).decision !== 'ask' ||
                     useAgentStore.getState().approvedToolNames.includes(event.toolCall.name)
                   if (!willAutoApprove) {
                     useAgentStore.getState().addToolCall(
