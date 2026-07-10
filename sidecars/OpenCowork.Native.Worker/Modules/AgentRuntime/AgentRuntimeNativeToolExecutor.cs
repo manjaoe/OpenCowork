@@ -988,6 +988,7 @@ internal static class AgentRuntimeNativeToolExecutor
             1,
             ShellMaxTimeoutMs);
         var startedAt = Stopwatch.GetTimestamp();
+        var artifactsBefore = SnapshotArtifactFiles(cwd);
         using var process = CreateShellProcess(command, cwd);
         process.Start();
 
@@ -1075,6 +1076,24 @@ internal static class AgentRuntimeNativeToolExecutor
         await CompleteShellReadTaskAsync(stderrTask);
         var exitCode = timedOut ? 124 : process.ExitCode;
         await EmitLiveUpdateAsync();
+
+        List<(string Path, long Size)>? artifacts = null;
+        var artifactsOverflow = 0;
+        try
+        {
+            var changed = DiffArtifactFiles(artifactsBefore, SnapshotArtifactFiles(cwd));
+            if (changed.Count > ArtifactMaxResults)
+            {
+                artifactsOverflow = changed.Count - ArtifactMaxResults;
+                changed = changed.GetRange(0, ArtifactMaxResults);
+            }
+            artifacts = changed;
+        }
+        catch
+        {
+            // ponytail: artifact detection is best-effort only; never let it fail the Bash result
+        }
+
         return EncodeJsonObject(writer =>
         {
             writer.WriteNumber("exitCode", exitCode);
@@ -1085,7 +1104,127 @@ internal static class AgentRuntimeNativeToolExecutor
             writer.WriteString("cwd", cwd);
             writer.WriteString("command", command);
             writer.WriteNumber("totalMs", ElapsedMs(startedAt));
+
+            if (artifacts is { Count: > 0 })
+            {
+                writer.WriteStartArray("artifacts");
+                foreach (var artifact in artifacts)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("path", artifact.Path);
+                    writer.WriteNumber("size", artifact.Size);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+
+                if (artifactsOverflow > 0)
+                {
+                    writer.WriteNumber("artifactsTruncated", artifactsOverflow);
+                }
+            }
         });
+    }
+
+    private const int ArtifactScanMaxDepth = 3;
+    private const int ArtifactScanMaxFiles = 5_000;
+    private const int ArtifactMaxResults = 20;
+
+    private static readonly HashSet<string> ArtifactExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".docx", ".xlsx", ".pptx", ".pdf", ".csv", ".png", ".jpg", ".jpeg", ".svg", ".zip"
+    };
+
+    private static Dictionary<string, (DateTime MtimeUtc, long Size)> SnapshotArtifactFiles(string root)
+    {
+        var snapshot = new Dictionary<string, (DateTime, long)>(StringComparer.Ordinal);
+        try
+        {
+            var visited = 0;
+            WalkArtifactFiles(new DirectoryInfo(root), 0, snapshot, ref visited);
+        }
+        catch
+        {
+            // ponytail: best-effort scan; a broken root just yields an empty snapshot
+        }
+        return snapshot;
+    }
+
+    // ponytail: known accepted limitation — a concurrent writer touching this
+    // folder during the command window can be misattributed to this command's
+    // artifacts. Single-user desktop app; not worth cross-process locking.
+    private static void WalkArtifactFiles(
+        DirectoryInfo dir,
+        int depth,
+        Dictionary<string, (DateTime, long)> snapshot,
+        ref int visited)
+    {
+        if (depth > ArtifactScanMaxDepth)
+        {
+            return;
+        }
+
+        IEnumerable<FileSystemInfo> entries;
+        try
+        {
+            entries = dir.EnumerateFileSystemInfos();
+        }
+        catch
+        {
+            // one unreadable directory skips only this subtree, not the whole walk
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            if (visited >= ArtifactScanMaxFiles)
+            {
+                return;
+            }
+            visited++;
+
+            try
+            {
+                if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    continue; // never follow symlinks/reparse points
+                }
+
+                if (entry is DirectoryInfo subDir)
+                {
+                    if (subDir.Name.StartsWith('.') ||
+                        subDir.Name.Equals("node_modules", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    WalkArtifactFiles(subDir, depth + 1, snapshot, ref visited);
+                }
+                else if (entry is FileInfo file && ArtifactExtensions.Contains(file.Extension))
+                {
+                    snapshot[file.FullName] = (file.LastWriteTimeUtc, file.Length);
+                }
+            }
+            catch
+            {
+                // per-entry resilience: permission error or the file/dir vanishing
+                // mid-walk (TOCTOU on attributes/length/mtime reads) skips just this
+                // entry, never discards the rest of the snapshot
+            }
+        }
+    }
+
+    private static List<(string Path, long Size)> DiffArtifactFiles(
+        Dictionary<string, (DateTime MtimeUtc, long Size)> before,
+        Dictionary<string, (DateTime MtimeUtc, long Size)> after)
+    {
+        var changed = new List<(string, long)>();
+        foreach (var (path, info) in after)
+        {
+            if (!before.TryGetValue(path, out var previous) || previous.MtimeUtc != info.MtimeUtc)
+            {
+                changed.Add((path, info.Size));
+            }
+        }
+        return changed;
     }
 
     private static async Task EmitShellToolUpdateAsync(

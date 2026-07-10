@@ -1201,5 +1201,11 @@
     "aiCommitNeedStaged": "Stage changes first, then generate a message",
     "aiCommitEmptyStaged": "Nothing staged — cannot generate a message",
     "aiCommitFailed": "Generation failed. Check API / model settings and try again"
+  },
+  "artifacts": {
+    "title": "Files created",
+    "reveal": "Reveal in Finder",
+    "open": "Open",
+    "more": "+{{count}} more"
   }
 }

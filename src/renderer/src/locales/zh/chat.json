@@ -1200,5 +1200,11 @@
     "aiCommitNeedStaged": "请先将变更暂存后再生成说明",
     "aiCommitEmptyStaged": "暂存区为空，无法生成说明",
     "aiCommitFailed": "生成失败，请检查 API / 模型配置后重试"
+  },
+  "artifacts": {
+    "title": "生成的文件",
+    "reveal": "在 Finder 中显示",
+    "open": "打开",
+    "more": "还有 {{count}} 个"
   }
 }
