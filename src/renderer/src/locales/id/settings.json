@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Gagal menyegarkan info pengguna",
     "channelDisconnect": "Putuskan",
     "channelDisconnected": "Saluran terputus",
-    "channelRequired": "Silakan selesaikan verifikasi saluran terlebih dahulu"
+    "channelRequired": "Silakan selesaikan verifikasi saluran terlebih dahulu",
+    "modelCategoryVideo": "Video",
+    "seedanceVideo": "Seedance Video (Volcengine)"
   },
   "channel": {
     "title": "Kanal",

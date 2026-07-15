@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Impossible de rafraîchir les informations utilisateur",
     "channelDisconnect": "Déconnecter",
     "channelDisconnected": "Canal déconnecté",
-    "channelRequired": "Veuillez d'abord effectuer la vérification du canal"
+    "channelRequired": "Veuillez d'abord effectuer la vérification du canal",
+    "modelCategoryVideo": "Vidéo",
+    "seedanceVideo": "Seedance Video (Volcengine)"
   },
   "channel": {
     "title": "Canaux",

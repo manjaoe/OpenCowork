@@ -13,93 +13,21 @@ import { Slider } from '@renderer/components/ui/slider'
 import { Textarea } from '@renderer/components/ui/textarea'
 import { useChatActions } from '@renderer/hooks/use-chat-actions'
 import { useImageEditStore, type ImageEditMode } from '@renderer/stores/image-edit-store'
+import {
+  buildMaskDataUrl,
+  drawMaskStroke,
+  getRelativePoint,
+  type ImageSize,
+  type MaskStroke
+} from '@renderer/lib/image-mask'
 
 const DEFAULT_BRUSH_SIZE = 72
 const MIN_BRUSH_SIZE = 16
 const MAX_BRUSH_SIZE = 192
 const MASK_PREVIEW_COLOR = 'rgba(239, 68, 68, 0.45)'
-const MASK_EXPORT_COLOR = 'rgba(0, 0, 0, 1)'
 
 interface ImageEditDialogProps {
   sessionId?: string | null
-}
-
-interface Point {
-  x: number
-  y: number
-}
-
-interface MaskStroke {
-  size: number
-  points: Point[]
-}
-
-interface ImageSize {
-  width: number
-  height: number
-}
-
-function drawMaskStroke(ctx: CanvasRenderingContext2D, stroke: MaskStroke, color: string): void {
-  if (!stroke.points.length || stroke.size <= 0) return
-
-  ctx.save()
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.lineWidth = stroke.size
-  ctx.strokeStyle = color
-  ctx.fillStyle = color
-
-  if (stroke.points.length === 1) {
-    const point = stroke.points[0]
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, stroke.size / 2, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.restore()
-    return
-  }
-
-  ctx.beginPath()
-  ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
-  for (let index = 1; index < stroke.points.length; index += 1) {
-    const point = stroke.points[index]
-    ctx.lineTo(point.x, point.y)
-  }
-  ctx.stroke()
-  ctx.restore()
-}
-
-function buildMaskDataUrl(imageSize: ImageSize, strokes: MaskStroke[]): string {
-  const canvas = document.createElement('canvas')
-  canvas.width = imageSize.width
-  canvas.height = imageSize.height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return ''
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 1)'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.globalCompositeOperation = 'destination-out'
-  for (const stroke of strokes) {
-    drawMaskStroke(ctx, stroke, MASK_EXPORT_COLOR)
-  }
-  ctx.globalCompositeOperation = 'source-over'
-
-  return canvas.toDataURL('image/png')
-}
-
-function getRelativePoint(
-  event: React.PointerEvent<HTMLCanvasElement>,
-  imageSize: ImageSize
-): Point | null {
-  const bounds = event.currentTarget.getBoundingClientRect()
-  if (!bounds.width || !bounds.height) return null
-
-  const relativeX = (event.clientX - bounds.left) / bounds.width
-  const relativeY = (event.clientY - bounds.top) / bounds.height
-
-  return {
-    x: Math.max(0, Math.min(imageSize.width, relativeX * imageSize.width)),
-    y: Math.max(0, Math.min(imageSize.height, relativeY * imageSize.height))
-  }
 }
 
 function buildDialogTitle(t: ReturnType<typeof useTranslation>['t'], mode: ImageEditMode): string {

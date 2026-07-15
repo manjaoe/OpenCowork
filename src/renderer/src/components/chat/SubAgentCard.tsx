@@ -31,9 +31,9 @@ function getSubAgentIcon(agentName: string): React.ReactNode {
   const def = subAgentRegistry.get(agentName)
   if (def?.icon && def.icon in icons) {
     const IconComp = icons[def.icon as keyof typeof icons]
-    return <IconComp className="size-4" />
+    return <IconComp className="size-3.5" />
   }
-  return <Brain className="size-4" />
+  return <Brain className="size-3.5" />
 }
 
 function formatElapsed(ms: number): string {
@@ -41,12 +41,6 @@ function formatElapsed(ms: number): string {
   const secs = ms / 1000
   if (secs < 60) return `${secs.toFixed(1)}s`
   return `${Math.floor(secs / 60)}m${Math.round(secs % 60)}s`
-}
-
-function formatOrderLabel(toolUseId: string): string {
-  const digitSuffix = toolUseId.match(/\d+$/)?.[0]
-  if (digitSuffix) return digitSuffix.slice(-2).padStart(2, '0')
-  return toolUseId.slice(-2).toUpperCase().padStart(2, '0')
 }
 
 function extractToolResultText(content?: ToolResultContent): string {
@@ -60,48 +54,6 @@ function extractToolResultText(content?: ToolResultContent): string {
     .map((block) => block.text)
     .join('\n')
     .trim()
-}
-
-function DotMatrix({
-  filled,
-  tone
-}: {
-  filled: number
-  tone: 'active' | 'complete' | 'failed' | 'idle' | 'queued'
-}): React.JSX.Element {
-  const total = 24
-  const clampedFilled = Math.max(0, Math.min(total, filled))
-
-  return (
-    <div
-      className="grid gap-[2px]"
-      style={{ gridTemplateColumns: 'repeat(12, 3px)' }}
-      aria-hidden="true"
-    >
-      {Array.from({ length: total }).map((_, index) => {
-        const isFilled = index < clampedFilled
-        return (
-          <span
-            key={index}
-            className={cn(
-              'block size-[3px] rounded-[1px] transition-colors',
-              !isFilled && 'bg-white/[0.08]',
-              isFilled &&
-                tone === 'failed' &&
-                'bg-destructive/80 shadow-[0_0_5px_rgba(248,113,113,0.35)]',
-              isFilled &&
-                tone === 'queued' &&
-                'bg-amber-400/80 shadow-[0_0_5px_rgba(251,191,36,0.35)]',
-              isFilled &&
-                tone !== 'failed' &&
-                tone !== 'queued' &&
-                'bg-[#8cff72] shadow-[0_0_5px_rgba(140,255,114,0.45)]'
-            )}
-          />
-        )
-      })}
-    </div>
-  )
 }
 
 function SubAgentHoverContent({
@@ -119,38 +71,38 @@ function SubAgentHoverContent({
     <HoverCardContent
       side="top"
       align="start"
-      className="w-[min(32rem,calc(100vw-3rem))] border-white/10 bg-[#141414]/98 p-0 text-white shadow-2xl backdrop-blur"
+      className="w-[min(32rem,calc(100vw-3rem))] overflow-hidden border-border/70 bg-popover/98 p-0 text-popover-foreground shadow-xl backdrop-blur"
     >
-      <div className="space-y-3 p-3">
-        <div className="flex items-center gap-2 border-b border-white/10 pb-3">
-          <div className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-[#1b1b1b] text-white/82">
+      <div>
+        <div className="flex items-center gap-2.5 border-b border-border/60 px-3 py-2.5">
+          <div className="flex size-7 items-center justify-center rounded-full border border-border/70 text-foreground/75">
             {icon}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-white/88">{displayName}</div>
-            <div className="mt-0.5 text-[11px] text-white/45">subAgent</div>
+            <div className="truncate text-[13px] font-medium text-foreground/90">{displayName}</div>
+            <div className="mt-0.5 text-[10px] text-muted-foreground">SubAgent</div>
           </div>
         </div>
 
         {descriptionText ? (
-          <section className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/40">
+          <section className="space-y-1.5 px-3 py-2.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
               <FileText className="size-3" />
               <span>Description</span>
             </div>
-            <div className="whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[12px] leading-5 text-white/72">
+            <div className="whitespace-pre-wrap break-words text-[12px] leading-5 text-foreground/75">
               {descriptionText}
             </div>
           </section>
         ) : null}
 
         {promptText ? (
-          <section className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/40">
+          <section className="space-y-1.5 border-t border-border/50 px-3 py-2.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
               <ScrollText className="size-3" />
               <span>Prompt</span>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[12px] leading-5 text-white/72">
+            <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-foreground/75">
               {promptText}
             </div>
           </section>
@@ -220,7 +172,6 @@ function SubAgentCardInner({
   const reportStatus = tracked?.reportStatus
   const endReason = tracked?.endReason
   const isRunning = (tracked?.isRunning ?? false) && !isQueued
-  const isCompleted = !isRunning && !isQueued && (!!output || !!tracked)
   const historicalError = outputStr
     ? (() => {
         const parsedOutput = decodeStructuredToolResult(outputStr)
@@ -279,26 +230,7 @@ function SubAgentCardInner({
           ? t('subAgent.doneSynthesized', { defaultValue: 'Done (synthesized)' })
           : t('subAgent.done')
   const previewText = descriptionText || promptText.replace(/\s+/g, ' ').trim() || statusText
-  const orderLabel = formatOrderLabel(toolUseId)
   const icon = getSubAgentIcon(displayName)
-  const meterFill = isQueued
-    ? 4
-    : isError
-      ? 18
-      : isRunning
-        ? Math.max(8, Math.min(22, (callCount || iterationCount || 8) + 8))
-        : isCompleted
-          ? 24
-          : 6
-  const meterTone = isQueued
-    ? 'queued'
-    : isError
-      ? 'failed'
-      : isRunning
-        ? 'active'
-        : isCompleted
-          ? 'complete'
-          : 'idle'
   const metaText = [
     statusText,
     elapsed != null ? formatElapsed(elapsed) : '',
@@ -321,50 +253,57 @@ function SubAgentCardInner({
       onClick={handleOpenPanel}
       title={`${t('subAgent.viewDetails')} · ${metaText}`}
       className={cn(
-        'group my-2 w-full rounded-[9px] px-3 py-2.5 text-left transition-colors',
-        'hover:bg-[#242424] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/35',
-        isRunning && 'bg-[#1f1f1f]',
-        isError && 'bg-[#241919] hover:bg-[#2a1c1c]',
-        !isRunning && !isError && 'bg-[#1f1f1f]'
+        'group my-1 flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-[12px] transition-colors duration-200',
+        'hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45 dark:hover:bg-white/[0.035]',
+        isError && 'hover:bg-destructive/[0.035]'
       )}
     >
-      <div className="grid grid-cols-[32px_minmax(0,1fr)_auto] gap-x-3 gap-y-1">
-        <div
-          className={cn(
-            'row-span-2 flex size-7 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[#141414] text-white/82',
-            isRunning && 'border-emerald-400/35 bg-emerald-400/10',
-            isError && 'border-destructive/35 bg-destructive/10 text-destructive'
-          )}
-        >
-          {icon}
-        </div>
+      <span
+        className={cn(
+          'flex size-5 shrink-0 items-center justify-center rounded-full border text-muted-foreground transition-colors',
+          isQueued && 'border-amber-500/30 text-amber-600 dark:text-amber-300',
+          isRunning && 'border-sky-500/25 text-sky-600 dark:text-sky-300',
+          isError && 'border-destructive/25 text-destructive',
+          !isQueued &&
+            !isRunning &&
+            !isError &&
+            'border-lime-500/25 text-lime-600 dark:text-lime-400'
+        )}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
 
-        <div className="min-w-0 self-center">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-white/82">{displayName}</span>
-            {isBackground ? (
-              <span className="shrink-0 rounded border border-cyan-400/20 bg-cyan-400/8 px-1.5 py-0.5 text-[9px] font-medium leading-none text-cyan-300/75">
-                {t('subAgent.background', { defaultValue: 'Background' })}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <span className="self-center pl-3 text-[12px] font-semibold tabular-nums tracking-wide text-white/72">
-          {orderLabel}
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="shrink-0 font-mono text-[12px] font-medium text-foreground/82">
+          {displayName}
         </span>
+        {isBackground ? (
+          <span className="hidden shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/[0.07] px-1.5 py-0.5 text-[9px] font-medium leading-none text-cyan-700 sm:inline-flex dark:text-cyan-300">
+            {t('subAgent.background', { defaultValue: 'Background' })}
+          </span>
+        ) : null}
+        <span className="min-w-0 truncate text-[12px] text-muted-foreground/55">
+          ({previewText})
+        </span>
+      </span>
 
-        <div className="min-w-0 self-end">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="-mt-1 h-4 w-3 shrink-0 rounded-bl-[5px] border-b border-l border-white/[0.14]" />
-            <p className="truncate text-[12px] leading-5 text-white/55">{previewText}</p>
-          </div>
-        </div>
-
-        <div className="self-end pb-1 pl-3">
-          <DotMatrix filled={meterFill} tone={meterTone} />
-        </div>
-      </div>
+      <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground/65">
+        <span
+          className={cn(
+            'size-1.5 rounded-full',
+            isQueued && 'bg-amber-500',
+            isRunning && 'animate-pulse bg-sky-500 motion-reduce:animate-none',
+            isError && 'bg-destructive',
+            !isQueued && !isRunning && !isError && 'bg-emerald-500'
+          )}
+          aria-hidden="true"
+        />
+        <span className="max-w-28 truncate">{statusText}</span>
+        {elapsed != null ? (
+          <span className="tabular-nums text-muted-foreground/55">{formatElapsed(elapsed)}</span>
+        ) : null}
+      </span>
     </button>
   )
 

@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Fehler beim Aktualisieren der Benutzerinformationen",
     "channelDisconnect": "Trennung",
     "channelDisconnected": "Kanal getrennt",
-    "channelRequired": "Bitte zuerst Kanalverifizierung abschließen"
+    "channelRequired": "Bitte zuerst Kanalverifizierung abschließen",
+    "modelCategoryVideo": "Video",
+    "seedanceVideo": "Seedance Video (Volcengine)"
   },
   "channel": {
     "title": "Kanäle",

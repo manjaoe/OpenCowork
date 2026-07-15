@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "عدم تجديد معلومات المستخدمين",
     "channelDisconnect": "الفصل",
     "channelDisconnected": "تم فصل القناة",
-    "channelRequired": "يرجى التحقق من القناة أولا"
+    "channelRequired": "يرجى التحقق من القناة أولا",
+    "modelCategoryVideo": "فيديو",
+    "seedanceVideo": "فيديو Seedance (Volcengine)"
   },
   "channel": {
     "title": "القنوات",

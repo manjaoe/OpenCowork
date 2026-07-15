@@ -416,6 +416,7 @@ export function WorkspaceSidebar(): React.JSX.Element {
   const isMac = /Mac/.test(navigator.userAgent)
   const chatView = useUIStore((state) => state.chatView)
   const settingsPageOpen = useUIStore((state) => state.settingsPageOpen)
+  const settingsTab = useUIStore((state) => state.settingsTab)
   const skillsPageOpen = useUIStore((state) => state.skillsPageOpen)
   const soulsPageOpen = useUIStore((state) => state.soulsPageOpen)
   const syncPageOpen = useUIStore((state) => state.syncPageOpen)
@@ -571,7 +572,11 @@ export function WorkspaceSidebar(): React.JSX.Element {
     !translatePageOpen &&
     !tasksPageOpen
   const featureMenuActive =
-    resourcesPageOpen || skillsPageOpen || soulsPageOpen || syncPageOpen || drawPageOpen
+    resourcesPageOpen ||
+    skillsPageOpen ||
+    soulsPageOpen ||
+    syncPageOpen ||
+    (settingsPageOpen && settingsTab === 'plugin')
   const sessionsByProject = useMemo(() => {
     const next = new Map<string, SessionListItem[]>()
     for (const session of sessions) {
@@ -1050,11 +1055,11 @@ export function WorkspaceSidebar(): React.JSX.Element {
       onClick: openCommandPalette
     },
     {
-      key: 'plugins',
-      label: t('sidebar.pluginsLabel'),
-      icon: <Wand2 className="size-4 shrink-0" />,
-      active: settingsPageOpen && useUIStore.getState().settingsTab === 'plugin',
-      onClick: () => useUIStore.getState().openSettingsPage('plugin')
+      key: 'draw',
+      label: t('sidebar.drawLabel'),
+      icon: <Image className="size-4 shrink-0" />,
+      active: drawPageOpen,
+      onClick: () => useUIStore.getState().openDrawPage()
     },
     {
       key: 'automation',
@@ -1398,11 +1403,15 @@ export function WorkspaceSidebar(): React.JSX.Element {
                   <span>{t('navRail.resources')}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => useUIStore.getState().openDrawPage()}
-                  className={cn(drawPageOpen && 'bg-accent text-accent-foreground')}
+                  onSelect={() => useUIStore.getState().openSettingsPage('plugin')}
+                  className={cn(
+                    settingsPageOpen &&
+                      settingsTab === 'plugin' &&
+                      'bg-accent text-accent-foreground'
+                  )}
                 >
-                  <Image className="size-4" />
-                  <span>{t('navRail.draw')}</span>
+                  <Wand2 className="size-4" />
+                  <span>{t('sidebar.pluginsLabel')}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => useUIStore.getState().openSkillsPage()}

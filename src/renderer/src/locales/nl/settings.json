@@ -981,6 +981,8 @@
     "modelCategorySpeech": "Toespraak",
     "modelCategoryEmbedding": "Inbedding",
     "modelCategoryImage": "Afbeelding",
+    "modelCategoryVideo": "Video",
+    "seedanceVideo": "Seedance Video (Volcengine)",
     "maxOutputTokens": "Max uitvoer Tokens",
     "pricing": "Prijzen",
     "modelConfig": "Modelconfiguratie",

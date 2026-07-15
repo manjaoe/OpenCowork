@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Kullanıcı bilgilerini yenilemeye başarısız oldu",
     "channelDisconnect": "Disconnect",
     "channelDisconnected": "Kanal kırıldı",
-    "channelRequired": "Lütfen tam kanal doğrulama ilk önce"
+    "channelRequired": "Lütfen tam kanal doğrulama ilk önce",
+    "modelCategoryVideo": "Video",
+    "seedanceVideo": "Seedance Video (Volcengine)"
   },
   "channel": {
     "title": "Kanallar",

@@ -317,6 +317,12 @@ export const IPC = {
   IMAGE_PERSIST_GENERATED: 'image:persist-generated',
   IMAGE_CREATE_GIF_FROM_GRID: 'image:create-gif-from-grid',
 
+  // Video
+  SEEDANCE_VIDEO_START: 'seedance-video:start',
+  SEEDANCE_VIDEO_STATUS: 'seedance-video:status',
+  SEEDANCE_VIDEO_CANCEL: 'seedance-video:cancel',
+  SEEDANCE_VIDEO_JOB_UPDATE: 'seedance-video:job-update',
+
   // Desktop Control
   DESKTOP_SCREENSHOT_CAPTURE: 'desktop:screenshot:capture',
   DESKTOP_INPUT_CLICK: 'desktop:input:click',

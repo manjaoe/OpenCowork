@@ -3,14 +3,11 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import {
-  Bell,
   FileCode2,
-  FolderOpen,
   Loader2,
   PanelRightClose,
   PanelRightOpen,
   Plus,
-  Server,
   Terminal,
   Upload,
   X
@@ -120,12 +117,6 @@ function getToneIconButtonStyle(tone: ShellTone, palette: SshChromePalette): Rea
     return { color: palette.connectPillText }
   }
   return { color: palette.libraryPillText }
-}
-
-function getToneBorderColor(tone: ShellTone, palette: SshChromePalette): string {
-  if (tone === 'terminal') return palette.terminalBorder
-  if (tone === 'connect') return palette.connectBorder
-  return palette.libraryBorder
 }
 
 type SshWorkspaceStyle = React.CSSProperties & Record<`--${string}`, string>
@@ -789,44 +780,6 @@ export function SshPage(): React.JSX.Element {
         </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <div
-            className="titlebar-no-drag flex shrink-0 items-center gap-1 rounded-[14px] border p-1"
-            style={{
-              background:
-                shellTone === 'terminal' ? shellPalette.terminalPill : shellPalette.surface,
-              borderColor: getToneBorderColor(shellTone, shellPalette)
-            }}
-          >
-            <ChromePill
-              tone={shellTone}
-              palette={shellPalette}
-              active={!showTerminalView && workspaceSection !== 'sftp'}
-              className="h-7 rounded-[10px] px-3 text-[0.78rem]"
-              onClick={() => setWorkspaceSection('hosts')}
-            >
-              <Server className="size-3.5" />
-              <span>{t('workspace.vaults', { defaultValue: 'Hosts' })}</span>
-            </ChromePill>
-
-            <ChromePill
-              tone={shellTone}
-              palette={shellPalette}
-              active={!showTerminalView && workspaceSection === 'sftp'}
-              className="h-7 rounded-[10px] px-3 text-[0.78rem]"
-              onClick={() => setWorkspaceSection('sftp')}
-            >
-              <FolderOpen className="size-3.5" />
-              <span>SFTP</span>
-            </ChromePill>
-          </div>
-
-          {openTabs.length > 0 ? (
-            <div
-              className="h-6 w-px shrink-0"
-              style={{ background: getToneBorderColor(shellTone, shellPalette) }}
-            />
-          ) : null}
-
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
             <AnimatePresence initial={false}>
               {openTabs.map((tab) => {
@@ -961,15 +914,6 @@ export function SshPage(): React.JSX.Element {
               <UploadTaskList tasks={uploadTaskList} />
             </SheetContent>
           </Sheet>
-
-          <button
-            type="button"
-            className="inline-flex size-8 items-center justify-center rounded-[12px] transition-opacity hover:opacity-80"
-            style={getToneIconButtonStyle(shellTone, shellPalette)}
-            title={t('workspace.notifications', { defaultValue: 'Notifications' })}
-          >
-            <Bell className="size-4" />
-          </button>
         </div>
 
         {!isMac ? (

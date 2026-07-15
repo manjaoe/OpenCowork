@@ -1121,6 +1121,8 @@
     "modelCategorySpeech": "语音",
     "modelCategoryEmbedding": "嵌入",
     "modelCategoryImage": "图像",
+    "modelCategoryVideo": "视频",
+    "seedanceVideo": "Seedance 视频（火山引擎）",
     "maxOutputTokens": "最大输出 Token",
     "pricing": "定价",
     "modelConfig": "模型配置",

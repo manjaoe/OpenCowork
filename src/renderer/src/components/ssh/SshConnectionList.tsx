@@ -12,7 +12,6 @@ import {
   FolderSync,
   KeyRound,
   Loader2,
-  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -21,7 +20,6 @@ import {
   ScrollText,
   Search,
   Server,
-  Star,
   Terminal,
   type LucideIcon
 } from 'lucide-react'
@@ -240,7 +238,6 @@ function HostRow({
   isSelected,
   isTesting,
   testOk,
-  onSelect,
   onEdit,
   onConnect,
   onTest
@@ -251,7 +248,6 @@ function HostRow({
   isSelected: boolean
   isTesting: boolean
   testOk: boolean | undefined
-  onSelect: () => void
   onEdit: () => void
   onConnect: () => void
   onTest: () => void
@@ -287,40 +283,22 @@ function HostRow({
   return (
     <div
       className={cn(
-        'grid min-w-[1080px] grid-cols-[44px_44px_76px_96px_minmax(170px,1fr)_220px_minmax(230px,280px)_176px] items-center border-b border-[#2c2c2c] bg-[#151515] px-2 text-[13px] text-[#e5e7eb] transition-colors hover:bg-[#1b1b1b]',
+        'grid min-w-[940px] grid-cols-[76px_96px_minmax(170px,1fr)_220px_minmax(230px,280px)_144px] items-center border-b border-[#2c2c2c] bg-[#151515] px-2 text-[13px] text-[#e5e7eb] transition-colors hover:bg-[#1b1b1b]',
         isSelected && 'bg-[#1f1f1f]'
       )}
     >
-      <button
-        type="button"
-        className="flex h-[50px] items-center justify-center"
-        onClick={onSelect}
-      >
-        <span className="size-4 rounded-[4px] border border-[#3a3a3a]" />
-      </button>
-
-      <button
-        type="button"
-        className="flex h-[50px] items-center justify-center text-[#9ca3af] hover:text-white"
-        onClick={onSelect}
-      >
-        <Star className="size-4" />
-      </button>
-
-      <button type="button" className="flex items-center gap-2" onClick={onSelect}>
+      <div className="flex items-center gap-2">
         <SshOsBadge kind={osKind} />
-      </button>
+      </div>
 
-      <button type="button" className="flex items-center gap-2" onClick={onSelect}>
+      <div className="flex items-center gap-2">
         <span className={cn('inline-flex items-center gap-1 text-[12px]', statusTone)}>
           <span className="size-2 rounded-full bg-current" />
           {statusText}
         </span>
-      </button>
+      </div>
 
-      <button type="button" className="truncate text-left font-medium" onClick={onSelect}>
-        {connection.name}
-      </button>
+      <div className="truncate text-left font-medium">{connection.name}</div>
 
       <div className="flex items-center gap-2 font-mono text-[12px] text-[#d4d4d8]">
         <span className="truncate">{connection.host}</span>
@@ -376,14 +354,6 @@ function HostRow({
           aria-label={t('testConnection')}
         >
           {isTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
-        </button>
-        <button
-          type="button"
-          className="inline-flex size-8 items-center justify-center rounded-[7px] text-[#9ca3af] transition-colors hover:bg-[#222] hover:text-white"
-          title={t('workspace.more', { defaultValue: 'More' })}
-          aria-label={t('workspace.more', { defaultValue: 'More' })}
-        >
-          <MoreHorizontal className="size-4" />
         </button>
       </div>
     </div>
@@ -622,14 +592,6 @@ function HostsWorkspace({
     setInspectorDialogOpen(true)
   }, [setDetailConnectionId, setInspectorMode])
 
-  const handleSelectConnection = useCallback(
-    (connectionId: string) => {
-      setInspectorMode('edit')
-      setDetailConnectionId(connectionId)
-    },
-    [setDetailConnectionId, setInspectorMode]
-  )
-
   const handleEditConnection = useCallback(
     (connectionId: string) => {
       setInspectorMode('edit')
@@ -842,10 +804,6 @@ function HostsWorkspace({
               />
             </div>
 
-            <button type="button" className="text-[13px] font-medium text-[#30c56b]">
-              查看雨云服务器🔥
-            </button>
-
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
@@ -860,18 +818,6 @@ function HostsWorkspace({
                 onClick={() => void handleExportAll()}
               >
                 <Download className="size-4" />
-              </button>
-              <button
-                type="button"
-                className="rounded-[8px] border border-[#2d7d48] bg-[#173620] px-3 py-1.5 text-[13px] text-[#6ee787]"
-              >
-                本地仓库
-              </button>
-              <button
-                type="button"
-                className="rounded-[8px] px-3 py-1.5 text-[13px] text-[#b6b6b6] hover:bg-[#212121] hover:text-white"
-              >
-                云端仓库
               </button>
             </div>
           </div>
@@ -932,10 +878,8 @@ function HostsWorkspace({
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-auto">
-                <div className="min-w-[1020px] border-b border-[#2d2d2d] bg-[#1b1b1b] px-2 py-3 text-[12px] text-[#9ca3af]">
-                  <div className="grid grid-cols-[44px_44px_76px_96px_minmax(170px,1fr)_220px_minmax(230px,280px)_176px] items-center">
-                    <div />
-                    <div />
+                <div className="min-w-[940px] border-b border-[#2d2d2d] bg-[#1b1b1b] px-2 py-3 text-[12px] text-[#9ca3af]">
+                  <div className="grid grid-cols-[76px_96px_minmax(170px,1fr)_220px_minmax(230px,280px)_144px] items-center">
                     <div>系统</div>
                     <div>延迟</div>
                     <div>名称</div>
@@ -962,7 +906,6 @@ function HostsWorkspace({
                       isSelected={inspectorMode === 'edit' && detailConnectionId === connection.id}
                       isTesting={testingId === connection.id}
                       testOk={testOk}
-                      onSelect={() => handleSelectConnection(connection.id)}
                       onEdit={() => handleEditConnection(connection.id)}
                       onConnect={() => onConnect(connection.id)}
                       onTest={() => void handleTest(connection.id)}

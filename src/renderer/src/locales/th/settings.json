@@ -981,6 +981,8 @@
     "modelCategorySpeech": "พูด",
     "modelCategoryEmbedding": "การฝังตัว",
     "modelCategoryImage": "ภาพ",
+    "modelCategoryVideo": "วิดีโอ",
+    "seedanceVideo": "วิดีโอ Seedance (Volcengine)",
     "maxOutputTokens": "ตัวพิมพ์ใหญ่สุด",
     "pricing": "ความละเอียด",
     "modelConfig": "ปรับแต่งโมเดล",

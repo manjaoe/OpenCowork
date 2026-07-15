@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Lỗi nạp lại thông tin người dùng",
     "channelDisconnect": "Ngắt kết nối",
     "channelDisconnected": "Kênh đã ngắt kết nối",
-    "channelRequired": "Xin hãy kiểm tra lại kênh trước"
+    "channelRequired": "Xin hãy kiểm tra lại kênh trước",
+    "modelCategoryVideo": "Video",
+    "seedanceVideo": "Seedance Video (Volcengine)"
   },
   "channel": {
     "title": "Kênh",

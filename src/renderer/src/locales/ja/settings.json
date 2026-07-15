@@ -981,6 +981,8 @@
     "modelCategorySpeech": "スピーチ",
     "modelCategoryEmbedding": "エンベディング",
     "modelCategoryImage": "サイトマップ",
+    "modelCategoryVideo": "動画",
+    "seedanceVideo": "Seedance動画 (Volcengine)",
     "maxOutputTokens": "最高の出力トークン",
     "pricing": "料金について",
     "modelConfig": "モデル設定",

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-07-15
+
+### Added
+
+- Rewrote the Draw page as a node-graph canvas (text/image/config nodes with connections, upstream/downstream generation, crop/mask/outpaint/upscale/split dialogs, an asset library, a prompt library, and a canvas assistant panel), replacing the previous form-based layout.
+- Added Seedance video generation support via a Volcengine Ark provider, including a new native-worker module for the async Ark video protocol, main-process IPC handlers, and a "Seedance Video" provider option with a video model category in provider settings.
+- Added inpaint/outpaint mask editing for the native OpenAI Images worker (`action: 'edit'` with a mask part) and a corresponding renderer-side mask utility.
+
+### Changed
+
+- Moved sidebar navigation so the primary rail now links directly to the Draw page, with Plugins moved into the overflow menu.
+- Simplified the SSH page toolbar by removing the redundant Hosts/SFTP pill switcher and unused tone-border helpers.
+- Restyled the SubAgent hover card and icons to use theme-aware tokens instead of hardcoded dark colors, and removed unused dot-matrix and order-label helpers.
+- Trimmed duplicated logic out of ImageEditDialog and ImagePreview in favor of shared mask/graph utilities.
+
 ## [1.1.1] - 2026-07-14
 
 ### Added

@@ -981,6 +981,8 @@
     "modelCategorySpeech": "речь",
     "modelCategoryEmbedding": "встраивание",
     "modelCategoryImage": "Изображение",
+    "modelCategoryVideo": "Видео",
+    "seedanceVideo": "Видео Seedance (Volcengine)",
     "maxOutputTokens": "Токены Max Output",
     "pricing": "цены",
     "modelConfig": "Типовая конфигурация",

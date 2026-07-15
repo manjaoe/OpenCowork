@@ -15,6 +15,7 @@ import {
   Code2,
   Image as ImageIcon,
   Mic,
+  Video,
   Shapes,
   Sparkles,
   Copy,
@@ -547,6 +548,9 @@ function AddProviderDialog({
                 <SelectItem value="openai-responses">{t('provider.openaiResponses')}</SelectItem>
                 <SelectItem value="anthropic">{t('provider.anthropicMessages')}</SelectItem>
                 <SelectItem value="gemini">Gemini</SelectItem>
+                <SelectItem value="seedance-video">
+                  {t('provider.seedanceVideo', { defaultValue: 'Seedance Video (Volcengine)' })}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1005,6 +1009,9 @@ function ModelFormDialog({
                 </SelectItem>
                 <SelectItem value="image" className="text-xs">
                   {t('provider.modelCategoryImage')}
+                </SelectItem>
+                <SelectItem value="video" className="text-xs">
+                  {t('provider.modelCategoryVideo', { defaultValue: 'Video' })}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -3369,6 +3376,12 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
                       icon: Shapes,
                       label: t('provider.modelCategoryEmbedding')
                     })
+                  } else if (model.category === 'video') {
+                    capabilityIndicators.push({
+                      key: 'category-video',
+                      icon: Video,
+                      label: t('provider.modelCategoryVideo', { defaultValue: 'Video' })
+                    })
                   }
                   if (modelSupportsVision(model, provider.type)) {
                     capabilityIndicators.push({
@@ -3856,6 +3869,12 @@ export function ModelManagementPanel(): React.JSX.Element {
                     key: 'category-embedding',
                     icon: Shapes,
                     label: t('provider.modelCategoryEmbedding')
+                  })
+                } else if (model.category === 'video') {
+                  capabilityIndicators.push({
+                    key: 'category-video',
+                    icon: Video,
+                    label: t('provider.modelCategoryVideo', { defaultValue: 'Video' })
                   })
                 }
                 if (modelSupportsVision(model, model.type)) {

@@ -39,7 +39,8 @@ export default defineConfig({
         'mermaid',
         'partial-json',
         'motion',
-        'framer-motion'
+        'framer-motion',
+        'next-themes'
       ],
       exclude: ['@monaco-editor/react', '@monaco-editor/loader', 'html-to-image', 'monaco-editor']
     },

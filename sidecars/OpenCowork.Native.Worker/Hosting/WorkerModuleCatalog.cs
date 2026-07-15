@@ -16,6 +16,7 @@ internal static class WorkerModuleCatalog
         new AgentChangeModule(),
         new OpenAIImagesModule(),
         new OpenAIAudioModule(),
+        new SeedanceVideoModule(),
         new WebModule(),
         new McpConfigModule(),
         new UserContentModule(),

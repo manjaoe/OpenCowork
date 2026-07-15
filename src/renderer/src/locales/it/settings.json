@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Non riuscito a aggiornare le informazioni utente",
     "channelDisconnect": "Scollegamento",
     "channelDisconnected": "Canale scollegato",
-    "channelRequired": "Si prega di completare la verifica del canale prima"
+    "channelRequired": "Si prega di completare la verifica del canale prima",
+    "modelCategoryVideo": "Video",
+    "seedanceVideo": "Seedance Video (Volcengine)"
   },
   "channel": {
     "title": "Canali",

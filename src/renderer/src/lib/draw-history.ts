@@ -37,12 +37,20 @@ export interface DrawGifInputSnapshot {
   stage?: 'requesting' | 'processing' | 'completed'
 }
 
+export interface DrawCanvasPlacement {
+  x: number
+  y: number
+  w: number
+  scale: number
+}
+
 export interface DrawRunMeta {
   providerId?: string
   modelId?: string
   requestType?: string
   baseUrl?: string
   gif?: DrawGifInputSnapshot
+  canvas?: DrawCanvasPlacement
 }
 
 export interface DrawRunError {

@@ -22,7 +22,9 @@ internal static class OpenAIImagesTools
         {
             prompt = "Edit this image";
         }
-        var responseImages = await GenerateImagesForProviderAsync(provider, prompt, GetArray(parameters, "images"));
+        var action = JsonHelpers.GetString(parameters, "action");
+        var responseImages = await GenerateImagesForProviderAsync(
+            provider, prompt, GetArray(parameters, "images"), action, GetObject(parameters, "mask"));
 
         return WorkerResponse.Json(
             new NativeOpenAIImagesResult(responseImages.ToArray()),
@@ -32,13 +34,17 @@ internal static class OpenAIImagesTools
     public static async Task<List<NativeGeneratedImage>> GenerateImagesForProviderAsync(
         JsonElement provider,
         string prompt,
-        JsonElement imagesElement)
+        JsonElement imagesElement,
+        string? action = null,
+        JsonElement maskElement = default)
     {
         ValidateProvider(provider);
 
         var images = ReadImages(imagesElement);
-        return images.Count > 0
-            ? await EditImagesAsync(provider, prompt, images)
+        var mask = ReadMask(maskElement);
+        var useEdit = images.Count > 0 || string.Equals(action, "edit", StringComparison.OrdinalIgnoreCase);
+        return useEdit
+            ? await EditImagesAsync(provider, prompt, images, mask)
             : await GenerateImagesAsync(provider, prompt);
     }
 
@@ -67,7 +73,8 @@ internal static class OpenAIImagesTools
     private static async Task<List<NativeGeneratedImage>> EditImagesAsync(
         JsonElement provider,
         string prompt,
-        IReadOnlyList<NativeImageInput> images)
+        IReadOnlyList<NativeImageInput> images,
+        NativeImageInput? mask = null)
     {
         var url = $"{GetBaseUrl(provider)}/images/edits";
         using var content = new MultipartFormDataContent();
@@ -97,6 +104,18 @@ internal static class OpenAIImagesTools
                 content.Add(imageContent, fieldName, GetImageFileName(image.MediaType, index));
             }
         }
+
+        // Inpaint/outpaint mask: transparent pixels mark the region to regenerate.
+        // OpenAI requires the mask as a PNG with an alpha channel.
+        if (mask is not null && !omitted.Contains("mask"))
+        {
+            var maskBytes = Convert.FromBase64String(mask.Base64Data);
+            var maskContent = new ByteArrayContent(maskBytes);
+            maskContent.Headers.ContentType = new MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(mask.MediaType) ? "image/png" : mask.MediaType);
+            content.Add(maskContent, "mask", "mask.png");
+        }
+
         ApplyBodyOverridesToForm(content, provider, omitted);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
@@ -322,6 +341,22 @@ internal static class OpenAIImagesTools
             }
         }
         return result;
+    }
+
+    private static NativeImageInput? ReadMask(JsonElement mask)
+    {
+        if (mask.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        var dataUrl = JsonHelpers.GetString(mask, "dataUrl");
+        if (string.IsNullOrWhiteSpace(dataUrl))
+        {
+            return null;
+        }
+        var mediaType = JsonHelpers.GetString(mask, "mediaType") ?? GetImageInputMediaType(dataUrl);
+        var base64 = ExtractBase64FromDataUrl(dataUrl);
+        return string.IsNullOrWhiteSpace(base64) ? null : new NativeImageInput(base64, mediaType);
     }
 
     private static JsonElement GetArray(JsonElement element, string propertyName)

@@ -981,6 +981,8 @@
     "modelCategorySpeech": "Discurso",
     "modelCategoryEmbedding": "Incorporar",
     "modelCategoryImage": "Imagem",
+    "modelCategoryVideo": "Vídeo",
+    "seedanceVideo": "Vídeo Seedance (Volcengine)",
     "maxOutputTokens": "Tokens de Saída Máxima",
     "pricing": "Preços",
     "modelConfig": "Configuração do modelo",

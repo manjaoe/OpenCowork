@@ -645,6 +645,8 @@ function ensureDeferredIpcHandlers(): Promise<void> {
       closeAllSshSessions = sshModule.closeAllSshSessions
       imageGifModule.registerImageGifHandlers()
       migrationModule.registerMigrationHandlers()
+      const { registerSeedanceVideoHandlers } = await import('./ipc/seedance-video-handlers')
+      registerSeedanceVideoHandlers()
       await sshModule.registerSshHandlers()
     }
   )

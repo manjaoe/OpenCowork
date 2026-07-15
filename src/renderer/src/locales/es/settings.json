@@ -1149,7 +1149,9 @@
     "channelUserRefreshFailed": "Failed para refrescar la información del usuario",
     "channelDisconnect": "Desconexión",
     "channelDisconnected": "Canal desconectado",
-    "channelRequired": "Por favor complete la verificación del canal primero"
+    "channelRequired": "Por favor complete la verificación del canal primero",
+    "modelCategoryVideo": "Vídeo",
+    "seedanceVideo": "Vídeo Seedance (Volcengine)"
   },
   "channel": {
     "title": "Canales",

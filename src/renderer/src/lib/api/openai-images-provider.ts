@@ -17,6 +17,12 @@ interface Base64ImageInput {
   mediaType?: string
 }
 
+/** Inpaint/outpaint mask: transparent pixels mark the region to regenerate. */
+export interface NativeImageEditRequest {
+  maskDataUrl: string
+  maskMediaType?: string
+}
+
 interface GeneratedImage {
   sourceType: 'base64' | 'url'
   data: string
@@ -59,6 +65,7 @@ async function requestNativeImages(args: {
   config: ProviderConfig
   prompt: string
   images: Base64ImageInput[]
+  edit?: NativeImageEditRequest
 }): Promise<GeneratedImage[]> {
   const initialized = await agentBridge.initialize()
   if (!initialized) {
@@ -70,7 +77,13 @@ async function requestNativeImages(args: {
     {
       provider: args.config,
       prompt: args.prompt,
-      images: args.images
+      images: args.images,
+      ...(args.edit
+        ? {
+            action: 'edit',
+            mask: { dataUrl: args.edit.maskDataUrl, mediaType: args.edit.maskMediaType }
+          }
+        : {})
     },
     OPENAI_IMAGES_NATIVE_TIMEOUT_MS
   )
@@ -128,6 +141,7 @@ export async function* streamNativeOpenAIImages(args: {
   messages: UnifiedMessage[]
   config: ProviderConfig
   signal?: AbortSignal
+  edit?: NativeImageEditRequest
 }): AsyncIterable<StreamEvent> {
   const requestStartedAt = Date.now()
   let firstImageAt: number | null = null
@@ -179,7 +193,8 @@ export async function* streamNativeOpenAIImages(args: {
     const results = await requestNativeImages({
       config: args.config,
       prompt: textPrompt,
-      images: imageInputs
+      images: imageInputs,
+      edit: args.edit
     })
 
     for (const img of results) {

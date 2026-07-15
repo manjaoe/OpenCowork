@@ -47,18 +47,25 @@ function getFileName(filePath: string): string {
   return parts[parts.length - 1] || `image-${Date.now()}.png`
 }
 
-async function downloadPersistedImage(
-  filePath: string,
-  defaultName: string
-): Promise<{ canceled?: boolean }> {
-  const readResult = (await ipcClient.invoke(IPC.FS_READ_FILE_BINARY, {
-    path: filePath
-  })) as { data?: string; error?: string }
-
-  if (readResult.error || !readResult.data) {
-    throw new Error(readResult.error || 'Failed to read image file')
+async function readFilePathBase64(filePath: string): Promise<string | null> {
+  try {
+    const result = (await ipcClient.invoke(IPC.FS_READ_FILE_BINARY, {
+      path: filePath
+    })) as { data?: string; error?: string }
+    if (result.error || !result.data) return null
+    return result.data
+  } catch {
+    return null
   }
+}
 
+function dataUrlBase64(value: string): string | null {
+  if (!value.startsWith('data:')) return null
+  const parts = value.split(',', 2)
+  return parts.length === 2 ? parts[1] : null
+}
+
+async function saveImageBase64(data: string, defaultName: string): Promise<{ canceled?: boolean }> {
   const saveResult = (await ipcClient.invoke(IPC.FS_SELECT_SAVE_FILE, {
     defaultPath: defaultName,
     filters: [
@@ -75,7 +82,7 @@ async function downloadPersistedImage(
 
   const writeResult = (await ipcClient.invoke(IPC.FS_WRITE_FILE_BINARY, {
     path: saveResult.path,
-    data: readResult.data
+    data
   })) as { success?: boolean; error?: string }
 
   if (writeResult.error) {
@@ -135,14 +142,34 @@ export function ImagePreview({
     [filePath, imageDimensionKey, src]
   )
 
+  // Resolve image bytes as base64, preferring the persisted file but falling back
+  // to the source/display data URL when that file is missing (e.g. deleted on disk).
+  const resolveImageBase64 = async (): Promise<string> => {
+    if (filePath) {
+      const data = await readFilePathBase64(filePath)
+      if (data) return data
+    }
+    const fromSrc = dataUrlBase64(src) ?? dataUrlBase64(effectiveSrc)
+    if (fromSrc) return fromSrc
+    if (/^https?:\/\//i.test(src)) {
+      const result = await window.api.fetchImageBase64({ url: src })
+      if (result.error || !result.data) {
+        throw new Error(result.error || 'Failed to fetch image data')
+      }
+      return result.data
+    }
+    throw new Error('Failed to read image data')
+  }
+
   const handleDownload = async (): Promise<void> => {
     try {
       const defaultName = filePath
         ? getFileName(filePath)
         : `image-${Date.now()}${getDownloadExtension(src)}`
 
-      if (filePath) {
-        const result = await downloadPersistedImage(filePath, defaultName)
+      const persistedData = filePath ? await readFilePathBase64(filePath) : null
+      if (persistedData) {
+        const result = await saveImageBase64(persistedData, defaultName)
         if (result.canceled) return
       } else if (src.startsWith('data:')) {
         const blob = dataUrlToBlob(src)
@@ -187,27 +214,7 @@ export function ImagePreview({
 
   const handleCopy = async (): Promise<void> => {
     try {
-      let imageBase64: string
-
-      if (filePath) {
-        const result = (await ipcClient.invoke(IPC.FS_READ_FILE_BINARY, {
-          path: filePath
-        })) as { data?: string; error?: string }
-        if (result.error || !result.data) {
-          throw new Error(result.error || 'Failed to read image file')
-        }
-        imageBase64 = result.data
-      } else if (src.startsWith('data:')) {
-        const parts = src.split(',', 2)
-        if (parts.length !== 2) throw new Error('Invalid data URL')
-        imageBase64 = parts[1]
-      } else {
-        const result = await window.api.fetchImageBase64({ url: src })
-        if (result.error || !result.data) {
-          throw new Error(result.error || 'Failed to fetch image data')
-        }
-        imageBase64 = result.data
-      }
+      const imageBase64 = await resolveImageBase64()
 
       const result = await window.api.writeImageToClipboard({ data: imageBase64 })
       if (result.error) throw new Error(result.error)

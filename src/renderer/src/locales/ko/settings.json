@@ -981,6 +981,8 @@
     "modelCategorySpeech": "- 연혁",
     "modelCategoryEmbedding": "옵션 정보",
     "modelCategoryImage": "이름 *",
+    "modelCategoryVideo": "동영상",
+    "seedanceVideo": "Seedance 동영상 (Volcengine)",
     "maxOutputTokens": "최대 산출 토큰",
     "pricing": "가격 책정",
     "modelConfig": "모델 구성",
