@@ -332,6 +332,7 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'ssh:fs:upload:events',
   'ssh:fs:transfer:events',
   'ssh:status',
+  'ssh:connect:log',
   'ssh:config:changed',
   'oauth:callback',
   'cron:fired',

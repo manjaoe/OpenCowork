@@ -451,6 +451,16 @@
       "uploads": "上传活动",
       "noUploads": "尚无上传活动。"
     },
-    "libraryTab": "主机库"
+    "libraryTab": "主机库",
+    "stage": {
+      "connecting": "连接中…",
+      "failed": "失败",
+      "dial": "拨号",
+      "handshake": "握手",
+      "auth": "认证",
+      "shell": "Shell",
+      "lines": "行",
+      "waitingLog": "正在等待连接…"
+    }
   }
 }

@@ -344,7 +344,7 @@ export function TitleBar({
               <Button
                 variant="outline"
                 size="sm"
-                className="titlebar-no-drag hidden h-7 max-w-[min(16rem,24vw)] shrink overflow-hidden border-amber-500/30 bg-amber-500/10 px-2 text-[10px] text-amber-600 hover:bg-amber-500/15 dark:text-amber-400 xl:inline-flex"
+                className="titlebar-no-drag inline-flex h-7 max-w-[min(16rem,24vw)] shrink-0 overflow-hidden border-amber-500/30 bg-amber-500/10 px-2 text-[10px] text-amber-600 hover:bg-amber-500/15 dark:text-amber-400 xl:shrink"
                 onClick={onOpenUpdateDialog}
               >
                 <span className="shrink-0">
@@ -354,7 +354,7 @@ export function TitleBar({
                     <Download className="size-3.5" />
                   )}
                 </span>
-                <span className="truncate">
+                <span className="hidden truncate xl:inline">
                   {updateInfo.downloading
                     ? typeof updateInfo.downloadProgress === 'number'
                       ? tCommon('app.update.downloadingShort', {

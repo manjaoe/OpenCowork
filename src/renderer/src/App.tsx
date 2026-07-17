@@ -803,7 +803,6 @@ function App(): React.JSX.Element {
       setUpdateDownloadProgress(null)
       setInstallingUpdate(false)
       setDownloadedUpdateVersion(version)
-      setUpdateDialogOpen(true)
       toast.success(t('app.update.downloadedTitle'), {
         description: t('app.update.downloadedDescription', { version })
       })

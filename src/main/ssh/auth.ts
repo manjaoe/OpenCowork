@@ -247,7 +247,8 @@ async function connectClient(client: Client, config: ConnectConfig): Promise<voi
 
 function describeAuth(connection: SshConnectionWithSecrets): string {
   if (connection.authType === 'password') return 'password'
-  if (connection.authType === 'privateKey') return `private key (${connection.privateKeyPath ?? '?'})`
+  if (connection.authType === 'privateKey')
+    return `private key (${connection.privateKeyPath ?? '?'})`
   return 'ssh-agent'
 }
 
@@ -261,7 +262,11 @@ export async function connectWithProxyJump(
 
   if (!jumpTarget) {
     logger?.('info', 'dial', `Connecting to ${connection.host}:${connection.port}`)
-    logger?.('info', 'auth', `Authenticating as ${connection.username} via ${describeAuth(connection)}`)
+    logger?.(
+      'info',
+      'auth',
+      `Authenticating as ${connection.username} via ${describeAuth(connection)}`
+    )
     const client = new Client()
     await connectClient(client, targetConfig)
     logger?.('info', 'auth', 'Authentication succeeded')
@@ -294,7 +299,11 @@ export async function connectWithProxyJump(
       })
     })
     logger?.('info', 'dial', 'Tunnel established')
-    logger?.('info', 'auth', `Authenticating as ${connection.username} via ${describeAuth(connection)}`)
+    logger?.(
+      'info',
+      'auth',
+      `Authenticating as ${connection.username} via ${describeAuth(connection)}`
+    )
 
     await connectClient(targetClient, { ...targetConfig, sock: stream })
     logger?.('info', 'auth', 'Target host authenticated')

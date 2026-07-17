@@ -9,6 +9,11 @@ import { Button } from '@renderer/components/ui/button'
 const STAGE_ORDER = ['dial', 'handshake', 'auth', 'shell'] as const
 type StageKey = (typeof STAGE_ORDER)[number]
 
+// Stable reference for the "no logs yet" case; an inline `?? []` in the
+// selector returns a fresh array each render and drives zustand into an
+// infinite re-render loop.
+const EMPTY_LOGS: SshConnectLogEntry[] = []
+
 function levelColor(level: SshConnectLogEntry['level'], palette: SshChromePalette): string {
   if (level === 'error') return palette.danger
   if (level === 'warn') return palette.warning
@@ -46,7 +51,7 @@ export function ConnectionStage({
   onRetry: () => void
 }): React.JSX.Element {
   const { t } = useTranslation('ssh')
-  const logs = useSshStore((state) => state.connectLogs[connectionId] ?? [])
+  const logs = useSshStore((state) => state.connectLogs[connectionId] ?? EMPTY_LOGS)
   const logScrollRef = useRef<HTMLDivElement>(null)
 
   const isConnecting = sessionStatus === 'connecting'

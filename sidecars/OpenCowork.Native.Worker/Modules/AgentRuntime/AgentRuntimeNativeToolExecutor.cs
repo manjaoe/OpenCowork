@@ -30,10 +30,40 @@ internal static class AgentRuntimeNativeToolExecutor
         "Read", "Write", "Edit", "NotebookEdit", "LS", "Glob", "Grep", "Bash", "Shell"
     };
 
-    private static readonly Dictionary<string, Dictionary<string, ReadHistoryEntry>> ReadSnapshotsByRun =
+    private const int SessionReadScopeLimit = 64;
+
+    private static readonly Dictionary<string, Dictionary<string, ReadHistoryEntry>> ReadSnapshotsByScope =
         new(StringComparer.Ordinal);
 
+    private static readonly List<string> SessionReadScopeOrder = new();
+
     private readonly record struct ReadHistoryEntry(FileSnapshot Snapshot, string? Hash);
+
+    // Sub-agent and cron/background runs (marked by callerAgent) are one-shot
+    // conversations, so their read history lives and dies with the run. Interactive
+    // session runs keep it for the whole session so files read or written in earlier
+    // turns stay editable without a fresh Read, matching Claude Code semantics.
+    internal static string? ResolveReadHistoryScope(JsonElement parameters)
+    {
+        var runId = JsonHelpers.GetString(parameters, "runId");
+        if (string.IsNullOrWhiteSpace(runId))
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "callerAgent")))
+        {
+            return runId;
+        }
+
+        var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        return string.IsNullOrEmpty(sessionId) ? runId : $"session:{sessionId}";
+    }
+
+    internal static bool IsSessionReadScope(string scope)
+    {
+        return scope.StartsWith("session:", StringComparison.Ordinal);
+    }
 
     public static bool CanExecute(string toolName, JsonElement parameters)
     {
@@ -574,9 +604,11 @@ internal static class AgentRuntimeNativeToolExecutor
 
     public static void ClearRun(string runId)
     {
-        lock (ReadSnapshotsByRun)
+        // Only run-scoped history (sub-agents, cron runs) is cleared here. Session-scoped
+        // history intentionally survives run boundaries and is bounded by LRU eviction.
+        lock (ReadSnapshotsByScope)
         {
-            ReadSnapshotsByRun.Remove(runId);
+            ReadSnapshotsByScope.Remove(runId);
         }
         AgentRuntimeSshToolExecutor.ClearRun(runId);
         AgentRuntimeNotifyExecutor.ClearRun(runId);
@@ -1806,8 +1838,8 @@ internal static class AgentRuntimeNativeToolExecutor
 
     private static void RecordRead(JsonElement parameters, string path, string content)
     {
-        var runId = JsonHelpers.GetString(parameters, "runId");
-        if (string.IsNullOrWhiteSpace(runId))
+        var scope = ResolveReadHistoryScope(parameters);
+        if (scope is null)
         {
             return;
         }
@@ -1815,14 +1847,32 @@ internal static class AgentRuntimeNativeToolExecutor
         var fullPath = Path.GetFullPath(path);
         var entry = new ReadHistoryEntry(CaptureSnapshot(fullPath), HashText(content));
         var key = NormalizeReadHistoryPath(fullPath);
-        lock (ReadSnapshotsByRun)
+        lock (ReadSnapshotsByScope)
         {
-            if (!ReadSnapshotsByRun.TryGetValue(runId, out var snapshots))
+            if (!ReadSnapshotsByScope.TryGetValue(scope, out var snapshots))
             {
                 snapshots = new Dictionary<string, ReadHistoryEntry>(StringComparer.Ordinal);
-                ReadSnapshotsByRun[runId] = snapshots;
+                ReadSnapshotsByScope[scope] = snapshots;
             }
             snapshots[key] = entry;
+            TouchSessionScopeLocked(scope);
+        }
+    }
+
+    private static void TouchSessionScopeLocked(string scope)
+    {
+        if (!IsSessionReadScope(scope))
+        {
+            return;
+        }
+
+        SessionReadScopeOrder.Remove(scope);
+        SessionReadScopeOrder.Add(scope);
+        while (SessionReadScopeOrder.Count > SessionReadScopeLimit)
+        {
+            var evicted = SessionReadScopeOrder[0];
+            SessionReadScopeOrder.RemoveAt(0);
+            ReadSnapshotsByScope.Remove(evicted);
         }
     }
 
@@ -1833,8 +1883,8 @@ internal static class AgentRuntimeNativeToolExecutor
         bool allowMissingFile,
         CancellationToken cancellationToken)
     {
-        var runId = JsonHelpers.GetString(parameters, "runId");
-        if (string.IsNullOrWhiteSpace(runId))
+        var scope = ResolveReadHistoryScope(parameters);
+        if (scope is null)
         {
             return $"{toolName} requires an active native run id.";
         }
@@ -1847,9 +1897,9 @@ internal static class AgentRuntimeNativeToolExecutor
         }
 
         ReadHistoryEntry? previous = null;
-        lock (ReadSnapshotsByRun)
+        lock (ReadSnapshotsByScope)
         {
-            if (ReadSnapshotsByRun.TryGetValue(runId, out var snapshots) &&
+            if (ReadSnapshotsByScope.TryGetValue(scope, out var snapshots) &&
                 snapshots.TryGetValue(NormalizeReadHistoryPath(fullPath), out var entry))
             {
                 previous = entry;
@@ -1858,7 +1908,7 @@ internal static class AgentRuntimeNativeToolExecutor
 
         if (previous is null)
         {
-            return $"{toolName} requires the file to be read in this agent turn first. Call Read on {fullPath} and retry.";
+            return $"{toolName} requires the file to be read in this conversation first. Call Read on {fullPath} and retry.";
         }
 
         if (previous.Value.Snapshot.Equals(current))
@@ -1885,7 +1935,7 @@ internal static class AgentRuntimeNativeToolExecutor
             }
         }
 
-        return $"{toolName} refused to edit because the file changed since it was last read in this turn. Call Read on {fullPath} again and retry.";
+        return $"{toolName} refused to edit because the file changed since it was last read. Call Read on {fullPath} again and retry.";
     }
 
     private static FileSnapshot CaptureSnapshot(string path)

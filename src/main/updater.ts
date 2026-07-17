@@ -577,9 +577,9 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
 
   const unsupportedReason = getUpdaterUnsupportedReason()
   if (unsupportedReason) {
+    // Still check for updates so users get the availability notice; only auto install is blocked.
     console.warn(`[Updater] ${unsupportedReason}`)
     writeCrashLog('updater_unsupported', { message: unsupportedReason })
-    return
   }
 
   configureAutoUpdaterLogger()
@@ -597,6 +597,11 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
 
     if (!isAutoInstallUpdateSupported()) {
       console.log('[Updater] No-install build detected. Waiting for manual download.')
+      return
+    }
+
+    if (getUpdaterUnsupportedReason()) {
+      console.log('[Updater] Auto install unsupported on this build. Waiting for manual download.')
       return
     }
 
@@ -644,6 +649,11 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
     console.error('[Updater] Auto update failed:', error)
     writeCrashLog('updater_error', { message, error })
 
+    // Only surface errors while a download is in flight; background update checks stay silent.
+    if (!downloadUpdatePromise) {
+      return
+    }
+
     const win = getValidWindow(options.getMainWindow)
     if (win) {
       const payload = { error: message }
@@ -652,8 +662,7 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
   })
 
   if (!isAutoUpdateEnabled()) {
-    console.log('[Updater] Auto update is disabled. Skip startup update check.')
-    return
+    console.log('[Updater] Auto update is disabled. Startup check will only notify.')
   }
 
   // Check for updates immediately on startup

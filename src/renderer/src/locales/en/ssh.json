@@ -451,6 +451,16 @@
       "uploads": "Upload activity",
       "noUploads": "No upload activity yet."
     },
-    "libraryTab": "Hosts"
+    "libraryTab": "Hosts",
+    "stage": {
+      "connecting": "Connecting…",
+      "failed": "Failed",
+      "dial": "Dial",
+      "handshake": "Handshake",
+      "auth": "Authenticate",
+      "shell": "Shell",
+      "lines": "lines",
+      "waitingLog": "Waiting for connection…"
+    }
   }
 }

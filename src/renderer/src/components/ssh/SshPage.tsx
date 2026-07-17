@@ -317,6 +317,7 @@ export function SshPage(): React.JSX.Element {
     if (activeTab?.type === 'terminal' && !terminalConnected) {
       return (
         <ConnectionStage
+          connectionId={activeTab.connectionId}
           connectionName={activeConnection?.name ?? activeTab?.connectionName ?? 'SSH'}
           connectionAddress={activeConnectionAddress ?? activeTab?.connectionName ?? 'SSH'}
           sessionStatus={stageStatus}

@@ -43,8 +43,12 @@ internal static class AgentRuntimeSshToolExecutor
         "Read", "Write", "Edit", "NotebookEdit", "LS", "Glob", "Grep", "Bash", "Shell"
     };
 
-    private static readonly Dictionary<string, Dictionary<string, FileSnapshot>> ReadSnapshotsByRun =
+    private const int SessionReadScopeLimit = 64;
+
+    private static readonly Dictionary<string, Dictionary<string, FileSnapshot>> ReadSnapshotsByScope =
         new(StringComparer.Ordinal);
+
+    private static readonly List<string> SessionReadScopeOrder = new();
 
     public static bool IsSshTool(string toolName)
     {
@@ -123,9 +127,11 @@ internal static class AgentRuntimeSshToolExecutor
 
     public static void ClearRun(string runId)
     {
-        lock (ReadSnapshotsByRun)
+        // Only run-scoped history (sub-agents, cron runs) is cleared here. Session-scoped
+        // history intentionally survives run boundaries and is bounded by LRU eviction.
+        lock (ReadSnapshotsByScope)
         {
-            ReadSnapshotsByRun.Remove(runId);
+            ReadSnapshotsByScope.Remove(runId);
         }
     }
 
@@ -724,8 +730,8 @@ internal static class AgentRuntimeSshToolExecutor
 
     private static async Task RecordReadAsync(JsonElement parameters, string path)
     {
-        var runId = JsonHelpers.GetString(parameters, "runId");
-        if (string.IsNullOrWhiteSpace(runId))
+        var scope = AgentRuntimeNativeToolExecutor.ResolveReadHistoryScope(parameters);
+        if (scope is null)
         {
             return;
         }
@@ -734,21 +740,39 @@ internal static class AgentRuntimeSshToolExecutor
         {
             var snapshot = await CaptureSnapshotAsync(parameters, path);
             var key = NormalizeReadHistoryPath(parameters, path);
-            lock (ReadSnapshotsByRun)
+            lock (ReadSnapshotsByScope)
             {
-                if (!ReadSnapshotsByRun.TryGetValue(runId, out var snapshots))
+                if (!ReadSnapshotsByScope.TryGetValue(scope, out var snapshots))
                 {
                     snapshots = new Dictionary<string, FileSnapshot>(StringComparer.Ordinal);
-                    ReadSnapshotsByRun[runId] = snapshots;
+                    ReadSnapshotsByScope[scope] = snapshots;
                 }
                 snapshots[key] = snapshot;
+                TouchSessionScopeLocked(scope);
             }
         }
         catch (Exception ex)
         {
             WorkerLog.Debug(
-                $"agent ssh tool read snapshot skipped runId={FormatLogValue(runId)} " +
+                $"agent ssh tool read snapshot skipped scope={FormatLogValue(scope)} " +
                 $"path={path} error={ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static void TouchSessionScopeLocked(string scope)
+    {
+        if (!AgentRuntimeNativeToolExecutor.IsSessionReadScope(scope))
+        {
+            return;
+        }
+
+        SessionReadScopeOrder.Remove(scope);
+        SessionReadScopeOrder.Add(scope);
+        while (SessionReadScopeOrder.Count > SessionReadScopeLimit)
+        {
+            var evicted = SessionReadScopeOrder[0];
+            SessionReadScopeOrder.RemoveAt(0);
+            ReadSnapshotsByScope.Remove(evicted);
         }
     }
 
@@ -758,8 +782,8 @@ internal static class AgentRuntimeSshToolExecutor
         string toolName,
         bool allowMissingFile)
     {
-        var runId = JsonHelpers.GetString(parameters, "runId");
-        if (string.IsNullOrWhiteSpace(runId))
+        var scope = AgentRuntimeNativeToolExecutor.ResolveReadHistoryScope(parameters);
+        if (scope is null)
         {
             return $"{toolName} requires an active native run id.";
         }
@@ -771,9 +795,9 @@ internal static class AgentRuntimeSshToolExecutor
         }
 
         FileSnapshot? previous = null;
-        lock (ReadSnapshotsByRun)
+        lock (ReadSnapshotsByScope)
         {
-            if (ReadSnapshotsByRun.TryGetValue(runId, out var snapshots) &&
+            if (ReadSnapshotsByScope.TryGetValue(scope, out var snapshots) &&
                 snapshots.TryGetValue(NormalizeReadHistoryPath(parameters, path), out var snapshot))
             {
                 previous = snapshot;
@@ -782,12 +806,12 @@ internal static class AgentRuntimeSshToolExecutor
 
         if (previous is null)
         {
-            return $"{toolName} requires the file to be read in this agent turn first. Call Read on {path} and retry.";
+            return $"{toolName} requires the file to be read in this conversation first. Call Read on {path} and retry.";
         }
 
         if (!previous.Value.Equals(current))
         {
-            return $"{toolName} refused to edit because the file changed since it was last read in this turn. Call Read on {path} again and retry.";
+            return $"{toolName} refused to edit because the file changed since it was last read. Call Read on {path} again and retry.";
         }
 
         return null;

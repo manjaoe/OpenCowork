@@ -23,4 +23,3 @@ export function getLiveOutputComponentClass(style: LiveOutputAnimationStyle): st
     style === 'elegant' ? 'ai-live-component--elegant' : 'ai-live-component--agile'
   }`
 }
-
