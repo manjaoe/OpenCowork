@@ -202,6 +202,7 @@ function ContextRing({
     return idx !== undefined ? (s.sessions[idx] ?? null) : null
   })
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
+  const contextCompressionThreshold = useSettingsStore((s) => s.contextCompressionThreshold)
   const channels = useChannelStore((s) => s.channels)
   const autoSelection = useUIStore((s) =>
     activeSession ? (s.autoModelSelectionsBySession[activeSession.id] ?? null) : null
@@ -236,7 +237,7 @@ function ContextRing({
     ? {
         enabled: true,
         contextLength: resolveCompressionContextLength(activeModelCfg),
-        threshold: resolveCompressionThreshold(activeModelCfg),
+        threshold: resolveCompressionThreshold(contextCompressionThreshold),
         preCompressThreshold: 0.65,
         reservedOutputBudget: resolveCompressionReservedOutputBudget(activeModelCfg)
       }

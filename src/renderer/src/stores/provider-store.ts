@@ -848,6 +848,8 @@ interface ProviderStore {
   /** Build a ProviderConfig for a specific provider+model (used by plugin/session overrides) */
   getProviderConfigById: (providerId: string, modelId: string) => ProviderConfig | null
   getFastProviderConfig: () => ProviderConfig | null
+  /** Build the globally configured context-compression provider, if available. */
+  getCompressionProviderConfig: () => ProviderConfig | null
   /** Build provider config for translation default model; falls back to active model config */
   getTranslationProviderConfig: () => ProviderConfig | null
   /** Build provider config for speech recognition; returns null if not configured */
@@ -1674,6 +1676,23 @@ export const useProviderStore = create<ProviderStore>()(
         }
       },
 
+      getCompressionProviderConfig: () => {
+        const binding = useSettingsStore.getState().contextCompressionModel
+        if (!binding) return null
+
+        const provider = get().providers.find((item) => item.id === binding.providerId)
+        const model = provider?.models.find((item) => item.id === binding.modelId)
+        if (
+          !isProviderAvailableForModelSelection(provider) ||
+          !model?.enabled ||
+          (model.category ?? 'chat') !== 'chat'
+        ) {
+          return null
+        }
+
+        return get().getProviderConfigById(binding.providerId, binding.modelId)
+      },
+
       getEffectiveMaxTokens: (userMaxTokens: number, modelId?: string) => {
         const { providers, activeProviderId, activeModelId } = get()
         const targetModelId = modelId ?? activeModelId
@@ -1812,6 +1831,7 @@ function migrateLegacyOAuthProviders(): void {
  * Safe to call multiple times — idempotent.
  */
 function ensureBuiltinPresets(): void {
+  removeLegacyModelCompressionThresholds()
   migrateLegacyOAuthProviders()
   const currentProviders = useProviderStore.getState().providers
   const upgradedPresets = builtinProviderPresets.filter((preset) => {
@@ -2274,6 +2294,43 @@ function ensureBuiltinPresets(): void {
         state.setActiveSpeechModel(nextSpeechModelId)
       }
     }
+  }
+}
+
+function removeLegacyModelCompressionThresholds(): void {
+  const state = useProviderStore.getState()
+  const activeModel = state.providers
+    .find((provider) => provider.id === state.activeProviderId)
+    ?.models.find((model) => model.id === state.activeModelId) as
+    | (AIModelConfig & { contextCompressionThreshold?: unknown })
+    | undefined
+  if (
+    typeof activeModel?.contextCompressionThreshold === 'number' &&
+    Number.isFinite(activeModel.contextCompressionThreshold)
+  ) {
+    useSettingsStore.getState().updateSettings({
+      contextCompressionThreshold: Math.min(
+        0.9,
+        Math.max(0.3, activeModel.contextCompressionThreshold)
+      )
+    })
+  }
+
+  let changed = false
+  const stripLegacyThreshold = <T extends AIModelConfig>(model: T): T => {
+    const copy = { ...model } as T & { contextCompressionThreshold?: unknown }
+    if (!Object.prototype.hasOwnProperty.call(copy, 'contextCompressionThreshold')) return model
+    delete copy.contextCompressionThreshold
+    changed = true
+    return copy
+  }
+  const providers = state.providers.map((provider) => ({
+    ...provider,
+    models: provider.models.map(stripLegacyThreshold)
+  }))
+  const managedModels = state.managedModels.map(stripLegacyThreshold)
+  if (changed) {
+    useProviderStore.setState({ providers, managedModels })
   }
 }
 

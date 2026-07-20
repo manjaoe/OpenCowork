@@ -5072,7 +5072,7 @@ export function useChatActions(): {
                 ? {
                     enabled: true,
                     contextLength: compressionContextLength,
-                    threshold: resolveCompressionThreshold(resolvedModelConfig),
+                    threshold: resolveCompressionThreshold(settings.contextCompressionThreshold),
                     preCompressThreshold: 0.65,
                     reservedOutputBudget:
                       resolveCompressionReservedOutputBudget(resolvedModelConfig)
@@ -6651,70 +6651,43 @@ export function useChatActions(): {
       return 'blocked'
     }
 
-    // Build provider config (same as sendMessage)
     const settings = useSettingsStore.getState()
     const providerStore = useProviderStore.getState()
-    const activeProvider = providerStore.getActiveProvider()
-    if (activeProvider) {
-      const ready = await ensureProviderAuthReady(activeProvider.id)
-      if (!ready) {
-        toast.error('Authentication missing', {
-          description: 'Please complete provider login in settings first'
-        })
-        return 'blocked'
-      }
-    }
-
-    const providerConfig = providerStore.getActiveProviderConfig()
-    const effectiveMaxTokens = providerStore.getEffectiveMaxTokens(settings.maxTokens)
-    const activeModelConfig = providerStore.getActiveModelConfig()
-    const activeModelThinkingConfig = activeModelConfig?.thinkingConfig
-    const thinkingEnabled = settings.thinkingEnabled && !!activeModelThinkingConfig
-    const reasoningEffort = resolveReasoningEffortForModel({
-      reasoningEffort: settings.reasoningEffort,
-      reasoningEffortByModel: settings.reasoningEffortByModel,
-      providerId: providerConfig?.providerId,
-      modelId: activeModelConfig?.id ?? providerConfig?.model,
-      thinkingConfig: activeModelThinkingConfig
-    })
-
-    const config: ProviderConfig | null = providerConfig
-      ? {
-          ...providerConfig,
-          maxTokens: effectiveMaxTokens,
-          temperature: settings.temperature,
-          systemPrompt: settings.systemPrompt || undefined,
-          thinkingEnabled,
-          thinkingConfig: activeModelThinkingConfig,
-          reasoningEffort
-        }
-      : null
-
-    if (!config) {
+    const compressSession = chatStore.sessions.find((s) => s.id === sessionId)
+    const sessionProviderConfig =
+      compressSession?.providerId && compressSession.modelId
+        ? providerStore.getProviderConfigById(compressSession.providerId, compressSession.modelId)
+        : null
+    const providerConfig =
+      providerStore.getCompressionProviderConfig() ??
+      sessionProviderConfig ??
+      providerStore.getActiveProviderConfig()
+    if (!providerConfig) {
       toast.error('Cannot compress', { description: 'AI provider not configured' })
       return 'blocked'
     }
-
-    // Override with session-bound provider if available
-    const compressSession = chatStore.sessions.find((s) => s.id === sessionId)
-    if (compressSession?.providerId && compressSession?.modelId) {
-      const ready = await ensureProviderAuthReady(compressSession.providerId)
+    if (providerConfig.providerId) {
+      const ready = await ensureProviderAuthReady(providerConfig.providerId)
       if (!ready) {
         toast.error('Authentication missing', {
-          description: 'Please complete session provider login in settings first'
+          description: 'Please complete compression provider login in settings first'
         })
         return 'blocked'
       }
-      const sessionProviderConfig = providerStore.getProviderConfigById(
-        compressSession.providerId,
-        compressSession.modelId
-      )
-      if (sessionProviderConfig?.apiKey) {
-        config.type = sessionProviderConfig.type
-        config.apiKey = sessionProviderConfig.apiKey
-        config.baseUrl = sessionProviderConfig.baseUrl
-        config.model = sessionProviderConfig.model
-      }
+    }
+
+    const compressionModelConfig = providerConfig.providerId
+      ? providerStore.providers
+          .find((provider) => provider.id === providerConfig.providerId)
+          ?.models.find((model) => model.id === providerConfig.model)
+      : null
+    const config: ProviderConfig = {
+      ...providerConfig,
+      maxTokens: compressionModelConfig?.maxOutputTokens
+        ? Math.min(settings.maxTokens, compressionModelConfig.maxOutputTokens)
+        : settings.maxTokens,
+      temperature: settings.temperature,
+      thinkingEnabled: false
     }
 
     const scopedConfig = await withWorkspacePromptCacheKey(config, {

@@ -212,6 +212,8 @@ export interface SidecarAgentRunRequest {
   contextSource?: SidecarContextSource
   liveOverlayMessages?: SidecarUnifiedMessage[]
   provider: SidecarProviderConfig
+  /** Dedicated provider used only to summarize context during compression. */
+  compressionProvider?: SidecarProviderConfig
   tools: SidecarToolDefinition[]
   subAgentToolCatalog?: SidecarToolDefinition[]
   webSearch?: SidecarWebSearchConfig
@@ -648,6 +650,13 @@ export function buildSidecarAgentRunRequest(args: {
   // so this degrades to today's parent-inherit behavior when no distinct fast model is set.
   const fastProviderConfig = useProviderStore.getState().getFastProviderConfig()
   const subAgentProvider = fastProviderConfig ? mapSidecarProvider(fastProviderConfig) : null
+  const configuredCompressionProvider = useProviderStore.getState().getCompressionProviderConfig()
+  const compressionProvider =
+    args.compression &&
+    configuredCompressionProvider &&
+    isNativeSidecarProviderConfig(configuredCompressionProvider)
+      ? mapSidecarProvider(configuredCompressionProvider)
+      : null
   const planRevision = normalizePlanRevision(args.planRevision)
   const planExecution = normalizePlanExecution(args.planExecution)
   const slashCommand = normalizeSlashCommand(args.slashCommand)
@@ -666,6 +675,7 @@ export function buildSidecarAgentRunRequest(args: {
     ...(args.contextSource ? { contextSource: args.contextSource } : {}),
     ...(liveOverlayMessages.length > 0 ? { liveOverlayMessages } : {}),
     provider,
+    ...(compressionProvider ? { compressionProvider } : {}),
     tools: args.tools.map(mapSidecarTool),
     ...(subAgentToolCatalog.length > 0 ? { subAgentToolCatalog } : {}),
     ...(webSearch ? { webSearch } : {}),

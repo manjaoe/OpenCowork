@@ -39,12 +39,13 @@ function parseRetryAfterMs(value: string | string[] | undefined): number | undef
   return undefined
 }
 
-function computeBackoffMs(attempt: number, retryAfterMs: number | undefined): number {
-  if (retryAfterMs != null) return retryAfterMs
-  const exp = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * Math.pow(2, attempt))
-  // +/-25% jitter
-  const jitter = (Math.random() * 0.5 - 0.25) * exp
-  return Math.max(100, Math.floor(exp + jitter))
+function computeBackoffMs(
+  attempt: number,
+  previousDelayMs: number,
+  retryAfterMs: number | undefined
+): number {
+  const incrementalDelay = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * (attempt + 1))
+  return Math.max(incrementalDelay, retryAfterMs ?? 0, previousDelayMs + RETRY_BASE_DELAY_MS)
 }
 
 function sendMessagePackToWebContents(
@@ -409,6 +410,7 @@ async function handleApiRequest(
   try {
     console.log(`[API Proxy] request ${method} ${url}`)
     let result: AttemptOutcome = {}
+    let previousRetryDelayMs = 0
     for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
       result = useSystemProxy
         ? await requestViaSystemProxy({
@@ -422,7 +424,8 @@ async function handleApiRequest(
       const status = result.statusCode ?? 0
       if (status > 0 && isRetryableStatus(status) && attempt < MAX_RETRY_ATTEMPTS) {
         const retryAfterMs = parseRetryAfterMs(result.headers?.['retry-after'])
-        const delay = computeBackoffMs(attempt, retryAfterMs)
+        const delay = computeBackoffMs(attempt, previousRetryDelayMs, retryAfterMs)
+        previousRetryDelayMs = delay
         console.warn(
           `[API Proxy] request HTTP ${status}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`
         )

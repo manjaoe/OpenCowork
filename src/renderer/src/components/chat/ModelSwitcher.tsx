@@ -47,12 +47,6 @@ import type {
   ThinkingConfig
 } from '@renderer/lib/api/types'
 import { isResponsesImageGenerationEnabled } from '@renderer/lib/api/responses-image-generation'
-import {
-  clampCompressionThreshold,
-  DEFAULT_CONTEXT_COMPRESSION_THRESHOLD,
-  MAX_CONTEXT_COMPRESSION_THRESHOLD,
-  MIN_CONTEXT_COMPRESSION_THRESHOLD
-} from '@renderer/lib/agent/context-compression'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { ReasoningEffortSlider } from './ReasoningEffortSlider'
 
@@ -408,7 +402,6 @@ function ModelSettingsPopover({
     model,
     providerType
   )
-  const supportsContextCompression = !!model
   const levels = model?.thinkingConfig?.reasoningEffortLevels
   const thinkingEnabled = useSettingsStore((s) => s.thinkingEnabled)
   const fastModeEnabled = useSettingsStore((s) => s.fastModeEnabled)
@@ -457,7 +450,6 @@ function ModelSettingsPopover({
     supportsFastMode ||
     supportsResponsesWebsocket ||
     supportsResponsesImageGeneration ||
-    supportsContextCompression ||
     supportsAnthropicCacheTtl ||
     supportsBuiltinSearch
 
@@ -470,26 +462,6 @@ function ModelSettingsPopover({
   const thinkingBudget = clampThinkingBudget(
     readAnthropicThinkingBudget(model) ?? DEFAULT_ANTHROPIC_THINKING_BUDGET,
     model?.maxOutputTokens
-  )
-
-  const contextCompressionPercent = Math.round(
-    clampCompressionThreshold(
-      model?.contextCompressionThreshold ?? DEFAULT_CONTEXT_COMPRESSION_THRESHOLD
-    ) * 100
-  )
-
-  const updateContextCompressionThreshold = useCallback(
-    (value: number) => {
-      if (!model?.id) return
-      const normalized = clampCompressionThreshold(value / 100)
-      const providerStore = useProviderStore.getState()
-      const targetProviderId = providerId ?? providerStore.activeProviderId
-      if (!targetProviderId) return
-      providerStore.updateModel(targetProviderId, model.id, {
-        contextCompressionThreshold: normalized
-      })
-    },
-    [model, providerId]
   )
 
   const updateAnthropicThinkingBudget = useCallback(
@@ -791,28 +763,6 @@ function ModelSettingsPopover({
                         activeClassName="bg-emerald-500 border-emerald-500"
                       />
                     )}
-                  </div>
-                )}
-
-                {supportsContextCompression && (
-                  <div className="px-2 py-1.5">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-foreground">
-                        {tChat('input.contextCompressionThreshold')}
-                      </span>
-                      <span className="text-xs font-semibold text-foreground">
-                        {contextCompressionPercent}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={Math.round(MIN_CONTEXT_COMPRESSION_THRESHOLD * 100)}
-                      max={Math.round(MAX_CONTEXT_COMPRESSION_THRESHOLD * 100)}
-                      step={1}
-                      value={contextCompressionPercent}
-                      onChange={(e) => updateContextCompressionThreshold(Number(e.target.value))}
-                      className="w-full accent-sky-500"
-                    />
                   </div>
                 )}
               </SettingSection>

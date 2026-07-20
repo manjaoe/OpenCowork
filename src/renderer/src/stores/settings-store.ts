@@ -372,6 +372,10 @@ interface SettingsStore {
   browserUserDataReuseEnabled: boolean
   browserUserDataSource: BrowserUserDataSource
   contextCompressionEnabled: boolean
+  /** Global trigger ratio shared by every chat model. */
+  contextCompressionThreshold: number
+  /** Dedicated summarizer model. Null keeps using the current session model. */
+  contextCompressionModel: ModelBinding | null
   editorWorkspaceEnabled: boolean
   editorRemoteLanguageServiceEnabled: boolean
   maxParallelToolCalls: number
@@ -497,6 +501,8 @@ export const useSettingsStore = create<SettingsStore>()(
       browserUserDataReuseEnabled: true,
       browserUserDataSource: DEFAULT_BROWSER_USER_DATA_SOURCE,
       contextCompressionEnabled: true,
+      contextCompressionThreshold: 0.8,
+      contextCompressionModel: null,
       editorWorkspaceEnabled: false,
       editorRemoteLanguageServiceEnabled: false,
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
@@ -607,7 +613,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'opencowork-settings',
-      version: 29,
+      version: 30,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>
@@ -673,6 +679,27 @@ export const useSettingsStore = create<SettingsStore>()(
         }
         if (state.newSessionDefaultModel === undefined) {
           state.newSessionDefaultModel = null
+        }
+        if (
+          typeof state.contextCompressionThreshold !== 'number' ||
+          !Number.isFinite(state.contextCompressionThreshold)
+        ) {
+          state.contextCompressionThreshold = 0.8
+        } else {
+          state.contextCompressionThreshold = Math.min(
+            0.9,
+            Math.max(0.3, state.contextCompressionThreshold)
+          )
+        }
+        if (
+          !state.contextCompressionModel ||
+          typeof state.contextCompressionModel !== 'object' ||
+          Array.isArray(state.contextCompressionModel) ||
+          typeof (state.contextCompressionModel as Record<string, unknown>).providerId !==
+            'string' ||
+          typeof (state.contextCompressionModel as Record<string, unknown>).modelId !== 'string'
+        ) {
+          state.contextCompressionModel = null
         }
         if (state.mainModelSelectionMode === undefined) {
           state.mainModelSelectionMode = 'auto'
@@ -903,6 +930,8 @@ export const useSettingsStore = create<SettingsStore>()(
         reasoningEffortByModel: state.reasoningEffortByModel,
         teamToolsEnabled: state.teamToolsEnabled,
         contextCompressionEnabled: state.contextCompressionEnabled,
+        contextCompressionThreshold: state.contextCompressionThreshold,
+        contextCompressionModel: state.contextCompressionModel,
         editorWorkspaceEnabled: state.editorWorkspaceEnabled,
         editorRemoteLanguageServiceEnabled: state.editorRemoteLanguageServiceEnabled,
         maxParallelToolCalls: clampMaxParallelToolCalls(state.maxParallelToolCalls),

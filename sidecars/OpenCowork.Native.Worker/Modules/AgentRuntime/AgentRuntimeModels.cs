@@ -97,7 +97,11 @@ internal sealed record AgentRuntimeStreamEvent(
     string? ThinkingEncryptedProvider = null,
     JsonElement? SubAgentToolCallExtraContent = null,
     JsonElement? WebSearchSources = null,
-    string? WebSearchId = null);
+    string? WebSearchId = null,
+    int? Attempt = null,
+    int? MaxAttempts = null,
+    int? DelayMs = null,
+    int? StatusCode = null);
 
 internal sealed record AgentRuntimeToolUseBlock(
     string Id,

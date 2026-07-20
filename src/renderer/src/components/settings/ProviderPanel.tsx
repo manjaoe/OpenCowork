@@ -116,12 +116,6 @@ import { resolveProviderUserAgent } from '@renderer/lib/api/api-user-agent'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { ProviderIcon, ModelIcon } from './provider-icons'
-import {
-  clampCompressionThreshold,
-  DEFAULT_CONTEXT_COMPRESSION_THRESHOLD,
-  MAX_CONTEXT_COMPRESSION_THRESHOLD,
-  MIN_CONTEXT_COMPRESSION_THRESHOLD
-} from '@renderer/lib/agent/context-compression'
 
 const MODEL_ICON_OPTIONS = [
   'openai',
@@ -610,13 +604,6 @@ function ModelFormDialog({
   const [category, setCategory] = useState<ModelCategory>(initial?.category ?? 'chat')
   const [contextLength, setContextLength] = useState(initial?.contextLength?.toString() ?? '')
   const [maxOutputTokens, setMaxOutputTokens] = useState(initial?.maxOutputTokens?.toString() ?? '')
-  const [contextCompressionThreshold, setContextCompressionThreshold] = useState(
-    Math.round(
-      clampCompressionThreshold(
-        initial?.contextCompressionThreshold ?? DEFAULT_CONTEXT_COMPRESSION_THRESHOLD
-      ) * 100
-    ).toString()
-  )
   const [inputPrice, setInputPrice] = useState(initial?.inputPrice?.toString() ?? '')
   const [outputPrice, setOutputPrice] = useState(initial?.outputPrice?.toString() ?? '')
   const [cacheCreationPrice, setCacheCreationPrice] = useState(
@@ -696,13 +683,6 @@ function ModelFormDialog({
     setCategory(model.category ?? 'chat')
     setContextLength(model.contextLength?.toString() ?? '')
     setMaxOutputTokens(model.maxOutputTokens?.toString() ?? '')
-    setContextCompressionThreshold(
-      Math.round(
-        clampCompressionThreshold(
-          model.contextCompressionThreshold ?? DEFAULT_CONTEXT_COMPRESSION_THRESHOLD
-        ) * 100
-      ).toString()
-    )
     setInputPrice(model.inputPrice?.toString() ?? '')
     setOutputPrice(model.outputPrice?.toString() ?? '')
     setCacheCreationPrice(model.cacheCreationPrice?.toString() ?? '')
@@ -790,14 +770,6 @@ function ModelFormDialog({
       if (!isNaN(v)) model.maxOutputTokens = v
     } else {
       delete model.maxOutputTokens
-    }
-    if (contextCompressionThreshold.trim()) {
-      const v = parseFloat(contextCompressionThreshold)
-      if (!isNaN(v)) {
-        model.contextCompressionThreshold = clampCompressionThreshold(v / 100)
-      }
-    } else {
-      delete model.contextCompressionThreshold
     }
     if (inputPrice.trim()) {
       const v = parseFloat(inputPrice)
@@ -1053,27 +1025,6 @@ function ModelFormDialog({
                 className="text-xs"
               />
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">
-              {t('provider.contextCompressionThreshold')}
-            </label>
-            <p className="text-[11px] text-muted-foreground">
-              {t('provider.contextCompressionThresholdDesc', {
-                min: Math.round(MIN_CONTEXT_COMPRESSION_THRESHOLD * 100),
-                max: Math.round(MAX_CONTEXT_COMPRESSION_THRESHOLD * 100)
-              })}
-            </p>
-            <Input
-              type="number"
-              min={Math.round(MIN_CONTEXT_COMPRESSION_THRESHOLD * 100)}
-              max={Math.round(MAX_CONTEXT_COMPRESSION_THRESHOLD * 100)}
-              placeholder="80"
-              value={contextCompressionThreshold}
-              onChange={(e) => setContextCompressionThreshold(e.target.value)}
-              className="text-xs"
-            />
           </div>
 
           {/* Pricing */}
@@ -2335,7 +2286,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
         }
       }
       let url: string
-      let method = 'POST'
+      const method = 'POST'
       let body: string | undefined
       if (isAnthropic) {
         url = `${baseUrl}/v1/messages`
@@ -2365,7 +2316,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
         applyHeaderOverrides(model)
         body = JSON.stringify({
           model,
-          input: "Hi",
+          input: 'Hi',
           ...(activeProvider.requestOverrides?.body ?? {})
         })
       } else {

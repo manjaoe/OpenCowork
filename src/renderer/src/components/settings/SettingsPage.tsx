@@ -124,6 +124,11 @@ import {
   DEFAULT_APP_THEME_PRESET,
   DEFAULT_SSH_TERMINAL_THEME_PRESET
 } from '@renderer/lib/theme-presets'
+import {
+  clampCompressionThreshold,
+  MAX_CONTEXT_COMPRESSION_THRESHOLD,
+  MIN_CONTEXT_COMPRESSION_THRESHOLD
+} from '@renderer/lib/agent/context-compression'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
 import {
   DEFAULT_BUILTIN_SOUL_TEMPLATE_ID,
@@ -1418,9 +1423,37 @@ function GeneralPanel(): React.JSX.Element {
           />
         </div>
         {settings.contextCompressionEnabled && (
-          <p className="text-xs text-muted-foreground/70">
-            {t('general.contextCompressionEnabled')}
-          </p>
+          <div className="max-w-lg space-y-3">
+            <p className="text-xs text-muted-foreground/70">
+              {t('general.contextCompressionEnabled')}
+            </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">
+                    {t('general.contextCompressionThreshold')}
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    {t('general.contextCompressionThresholdDesc')}
+                  </p>
+                </div>
+                <span className="text-sm font-mono text-muted-foreground">
+                  {Math.round(settings.contextCompressionThreshold * 100)}%
+                </span>
+              </div>
+              <Slider
+                value={[settings.contextCompressionThreshold * 100]}
+                onValueChange={([value]) =>
+                  settings.updateSettings({
+                    contextCompressionThreshold: clampCompressionThreshold(value / 100)
+                  })
+                }
+                min={MIN_CONTEXT_COMPRESSION_THRESHOLD * 100}
+                max={MAX_CONTEXT_COMPRESSION_THRESHOLD * 100}
+                step={1}
+              />
+            </div>
+          </div>
         )}
       </section>
 
@@ -2964,6 +2997,20 @@ function ModelPanel(): React.JSX.Element {
 
   const activeModelValue =
     activeProvider && activeModelId ? buildModelValue(activeProvider.id, activeModelId) : ''
+  const hasConfiguredContextCompressionModel = settings.contextCompressionModel
+    ? chatProviderGroups.some(
+        ({ provider, models }) =>
+          provider.id === settings.contextCompressionModel?.providerId &&
+          models.some((model) => model.id === settings.contextCompressionModel?.modelId)
+      )
+    : false
+  const contextCompressionModelValue =
+    settings.contextCompressionModel && hasConfiguredContextCompressionModel
+      ? buildModelValue(
+          settings.contextCompressionModel.providerId,
+          settings.contextCompressionModel.modelId
+        )
+      : '__current__'
   const newSessionDefaultModelValue = settings.newSessionDefaultModel
     ? settings.newSessionDefaultModel.useGlobalActiveModel
       ? '__global__'
@@ -3182,6 +3229,67 @@ function ModelPanel(): React.JSX.Element {
                   </SelectContent>
                 </Select>
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground/60">{t('model.noModelsHint')}</p>
+            )}
+          </section>
+
+          {/* Context Compression Model */}
+          <section className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">{t('model.contextCompressionModel')}</label>
+              <p className="text-xs text-muted-foreground">
+                {t('model.contextCompressionModelDesc')}
+              </p>
+            </div>
+            {hasAnyEnabledModel ? (
+              <Select
+                value={contextCompressionModelValue}
+                onValueChange={(value) => {
+                  settings.updateSettings({
+                    contextCompressionModel: value === '__current__' ? null : parseModelValue(value)
+                  })
+                }}
+              >
+                <SelectTrigger className="w-80 text-xs">
+                  <SelectValue placeholder={t('model.selectContextCompressionModel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__current__" className="text-xs">
+                    {t('model.useCurrentSessionModel')}
+                  </SelectItem>
+                  {chatProviderGroups.map(({ provider, models }) => (
+                    <SelectGroup key={`${provider.id}-context-compression`}>
+                      <SelectLabel className="text-[10px] uppercase tracking-wide">
+                        {provider.name}
+                      </SelectLabel>
+                      {models.map((model) => (
+                        <SelectItem
+                          key={`${provider.id}-context-compression-${model.id}`}
+                          value={buildModelValue(provider.id, model.id)}
+                          className="text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <ModelIcon
+                              icon={model.icon}
+                              modelId={model.id}
+                              providerBuiltinId={provider.builtinId}
+                              size={16}
+                              className="text-muted-foreground/70"
+                            />
+                            <div className="flex flex-col text-left">
+                              <span>{model.name}</span>
+                              <span className="text-[10px] text-muted-foreground/60">
+                                {model.id}
+                              </span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <p className="text-xs text-muted-foreground/60">{t('model.noModelsHint')}</p>
             )}

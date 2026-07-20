@@ -42,7 +42,7 @@ export function buildRuntimeCompressionConfig(
   return {
     enabled: true,
     contextLength,
-    threshold: resolveCompressionThreshold(modelConfig),
+    threshold: resolveCompressionThreshold(settings.contextCompressionThreshold),
     preCompressThreshold: 0.65,
     reservedOutputBudget: resolveCompressionReservedOutputBudget(modelConfig)
   }
@@ -60,7 +60,7 @@ export function buildRuntimeCompression(
     compressFn: async (messages: UnifiedMessage[], options) => {
       const { messages: compressed } = await compressMessages(
         messages,
-        providerConfig,
+        useProviderStore.getState().getCompressionProviderConfig() ?? providerConfig,
         signal,
         options?.preserveCount,
         undefined,

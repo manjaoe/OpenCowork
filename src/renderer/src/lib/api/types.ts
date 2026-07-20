@@ -560,8 +560,6 @@ export interface AIModelConfig {
   contextLength?: number
   /** Allow context compression to use the model's full configured context length when it exceeds 200K */
   enableExtendedContextCompression?: boolean
-  /** Full context compression trigger ratio, clamped to 0.3 ~ 0.9 */
-  contextCompressionThreshold?: number
   maxOutputTokens?: number
   /** Price per million input tokens (USD) */
   inputPrice?: number
