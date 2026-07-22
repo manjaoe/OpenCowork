@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.3] - 2026-07-22
+
+### Added
+
+- Added a background/attached browser webview mode so agent-driven navigation runs off-panel without stealing the right panel; added a runtime reattach path that rehydrates in-flight agent state after HMR or window reload.
+- Added a Vietnamese translation pass covering AI Coding, CodeGraph, SSH, pet, chat, layout, and settings copy across all bundled locales.
+- Added CodeGraph grammar manifest tooling with validation and a predev script, and expanded PE export name parsing plus grammar asset status/UI messaging.
+- Added a dedicated Canvas Assistant model picker so the draw-canvas assistant no longer piggybacks on the global chat model.
+
+### Changed
+
+- Split the monolithic SSH store into modular slices and removed the accidentally checked-in `* 2.*` file duplicates left over from an earlier merge.
+- Reworked the settings page context-compression controls (moved into Settings, cleared from the model switcher and provider panel) and unified compression across renderer, native worker, and automatic flows.
+- Refined native-worker publish, sidecar management, and CodeGraph asset resolution paths.
+
+### Fixed
+
+- Fixed CodeGraph import resolver and extraction/resolution test coverage for expanded grammar cases.
+- Fixed a class of provider retry edge cases via a shared retry-policy helper across Anthropic, Gemini, OpenAI Chat, and OpenAI Responses transports.
+
 ## [1.2.2] - 2026-07-20
 
 ### Added
